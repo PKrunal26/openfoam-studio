@@ -1,0 +1,30 @@
+node_modules/
+tests/fixtures/generated/
+dist/
+.env
+.worktrees/
+demo/.generated-case/
+demo/projects/
+demo/server.compiled.js
+
+# OS / editor noise
+.DS_Store
+**/.DS_Store
+
+# Local tool / agent state
+.claude/
+.codex/
+.playwright-mcp/
+
+# Personal Obsidian workspace state
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+**/.obsidian/appearance.json
+**/.obsidian/themes/
+
+# Ad-hoc design-iteration screenshots at repo root
+/*.png
+
+# Working launch docs (not product)
+REDDIT_POST.md
+RELEASE_CHECKLIST.md

@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OpenFOAM Studio — How it works</title>
+<meta name="description" content="A visual field guide to how OpenFOAM Studio turns plain-English requests into validated CFD simulations." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#101D25; --ink-2:#3A4850; --muted:#697880; --faint:#9CABB2;
+  --line:#E3E9EC; --line-2:#EEF2F4;
+  --bg:#FFFFFF; --surface:#FFFFFF; --panel:#F8FAFB; --tint:#F1F5F7; --tint-2:#EAF0F3;
+  --accent:#0A5FB4; --accent-deep:#08487F;
+  --azure:#0E6FE0; --azure-deep:#0A4FA6;
+  --teal:#0C9B9B; --teal-deep:#0A6E70;
+  --cyan:#0E86A0; --mint:#10A074; --mint-deep:#0B7C5A;
+  --navy:#0F2C3D; --steel:#2E5A72; --slate:#4F6776;
+  --maxw:1080px;
+  --radius:4px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:16.5px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+/* header */
+header.bar{
+  position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px clamp(22px,5vw,44px);
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.brand{display:flex; align-items:center; gap:10px; font-family:'Schibsted Grotesk',sans-serif; font-weight:600; letter-spacing:-.01em; font-size:14.5px}
+.brand .glyph{width:20px;height:20px;flex:0 0 auto}
+nav.links{display:flex; gap:2px}
+nav.links a{
+  font-size:12.5px; color:var(--muted); text-decoration:none; padding:6px 11px; border-radius:var(--radius);
+  letter-spacing:.005em; transition:color .15s; white-space:nowrap;
+}
+nav.links a:hover{color:var(--ink)}
+nav.links a.active{color:var(--accent); font-weight:600}
+@media(max-width:900px){nav.links{display:none}}
+
+main{display:block}
+section{max-width:var(--maxw); margin:0 auto; padding:clamp(60px,9vh,100px) clamp(22px,5vw,44px); border-top:1px solid var(--line-2)}
+section:first-of-type{border-top:none}
+
+.kicker{
+  font-family:'JetBrains Mono',monospace; font-size:11.5px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--accent); display:flex; align-items:center; gap:12px; margin:0 0 16px;
+}
+.kicker .num{color:var(--faint)}
+.kicker::before{content:""; width:22px; height:1px; background:var(--accent); display:inline-block; opacity:.55}
+h2{
+  font-family:'Schibsted Grotesk',sans-serif; font-weight:600; letter-spacing:-.02em; line-height:1.1;
+  font-size:clamp(1.7rem,3.4vw,2.5rem); margin:0 0 16px; max-width:22ch;
+}
+.lede{font-size:clamp(1.02rem,1.45vw,1.2rem); color:var(--ink-2); max-width:66ch; margin:0; font-weight:400}
+p{max-width:68ch}
+p .hl{color:var(--ink); font-weight:600}
+code.k{font-family:'JetBrains Mono',monospace; font-size:.84em; background:var(--tint-2); color:var(--accent-deep);
+  padding:.1em .38em; border-radius:3px}
+
+/* ---------- HERO ---------- */
+.hero{border-top:none; padding-top:clamp(80px,12vh,132px); padding-bottom:clamp(60px,10vh,100px)}
+.hero h1{
+  font-family:'Schibsted Grotesk',sans-serif; font-weight:700; letter-spacing:-.03em; line-height:1.04;
+  font-size:clamp(2.3rem,5.6vw,4rem); margin:0 0 22px; max-width:17ch;
+}
+.hero h1 .alt{color:var(--accent)}
+.hero .sub{font-size:clamp(1.05rem,1.6vw,1.3rem); color:var(--ink-2); max-width:58ch; margin:0 0 30px; font-weight:400}
+.hero .sub em{font-style:normal; color:var(--ink); font-weight:600}
+.tagrow{display:flex; flex-wrap:wrap; gap:8px}
+.pill{
+  display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-2);
+  background:var(--bg); border:1px solid var(--line); padding:6px 12px; border-radius:var(--radius);
+}
+.pill .dot{width:6px;height:6px;border-radius:50%}
+
+/* ---------- generic layout helpers ---------- */
+.grid{display:grid; gap:30px 40px}
+.g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.card{background:none; border:none; border-top:1px solid var(--line); border-radius:0; padding:20px 0 0}
+.card h3{font-family:'Schibsted Grotesk',sans-serif; font-size:1.06rem; font-weight:600; margin:0 0 8px; letter-spacing:-.01em}
+.card p{font-size:.95rem; color:var(--ink-2); margin:0}
+.card .ix{font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--accent); margin-bottom:12px; display:block; letter-spacing:.06em}
+.card .tag{display:inline-block; font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.05em;
+  padding:0; margin-bottom:12px; background:none !important}
+
+/* step list */
+.steps{display:grid; grid-template-columns:repeat(3,1fr); gap:0; margin-top:40px;
+  border:none; border-top:1px solid var(--line); border-radius:0; background:none}
+.steps .step{padding:24px 32px 0 0; border-right:1px solid var(--line-2)}
+.steps .step:last-child{border-right:none; padding-right:0}
+.steps .step .n{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--accent); letter-spacing:.08em}
+.steps .step h4{font-family:'Schibsted Grotesk',sans-serif; font-size:1.12rem; font-weight:600; margin:12px 0 8px; letter-spacing:-.01em}
+.steps .step p{font-size:.95rem; color:var(--ink-2); margin:0}
+@media(max-width:780px){.steps{grid-template-columns:1fr} .steps .step{border-right:none; border-bottom:1px solid var(--line-2); padding:22px 0} .steps .step:last-child{border-bottom:none}}
+
+/* diagram figure */
+.fig{margin:40px 0 0; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:26px clamp(16px,3vw,30px) 18px}
+.fig svg{width:100%; height:auto; display:block}
+.fig figcaption{margin-top:18px; padding-top:16px; border-top:1px solid var(--line-2);
+  font-size:12.5px; color:var(--muted); display:flex; gap:18px; flex-wrap:wrap; align-items:center}
+.legend{display:flex; gap:16px; flex-wrap:wrap}
+.legend .li{display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-2)}
+.legend .sw{width:10px;height:10px;border-radius:2px}
+
+/* scenario flows (data-flow section) */
+.flows{margin-top:40px; display:flex; flex-direction:column; gap:22px}
+.scen{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:20px clamp(16px,3vw,28px) 16px}
+.scen-h{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin:0}
+.scen-h .lab{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+.scen-h h3{font-family:'Schibsted Grotesk',sans-serif; font-size:1.02rem; font-weight:600; margin:0; letter-spacing:-.01em}
+.scen-h .ep{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-left:auto; background:var(--tint-2); padding:3px 8px; border-radius:3px}
+.scen svg{width:100%; height:auto; display:block; margin-top:12px}
+.scen .cap{margin:8px 0 0; font-size:12.5px; color:var(--muted); max-width:88ch}
+@media(max-width:620px){.scen-h .ep{margin-left:0}}
+
+/* svg shared text */
+.diagram text{font-family:'Hanken Grotesk',sans-serif; fill:var(--ink)}
+.d-t{font-weight:700; font-size:15px}
+.d-t2{font-family:'Schibsted Grotesk',sans-serif; font-weight:700; font-size:15.5px}
+.d-s{font-family:'JetBrains Mono',monospace; font-size:11px; fill:var(--muted)}
+.d-chip{font-family:'JetBrains Mono',monospace; font-size:12px; fill:var(--ink-2)}
+.d-lbl{font-family:'JetBrains Mono',monospace; font-size:11px; fill:var(--slate)}
+.node{fill:#fff; stroke:var(--line); stroke-width:1.3}
+.node-tint{fill:var(--tint); stroke:var(--line); stroke-width:1.3}
+.chip{fill:#fff; stroke:var(--line); stroke-width:1.2}
+.edge{fill:none; stroke:#A9BDC7; stroke-width:1.6}
+.edge-d{fill:none; stroke:#A9BDC7; stroke-width:1.6; stroke-dasharray:5 5}
+
+/* spec / kv block */
+.spec{display:grid; grid-template-columns:1fr 1fr; gap:28px 40px; margin-top:40px}
+@media(max-width:720px){.spec{grid-template-columns:1fr}}
+.kv{display:flex; gap:13px; align-items:flex-start; background:none; border:none; border-top:1px solid var(--line); border-radius:0; padding:20px 0 0}
+.kv .ic{flex:0 0 auto; width:24px;height:24px;border-radius:0; display:grid; place-items:center; background:none}
+.kv .ic svg{width:22px;height:22px}
+.kv h4{font-family:'Schibsted Grotesk',sans-serif; font-size:.98rem; font-weight:600; margin:0 0 4px}
+.kv p{font-size:.92rem; color:var(--ink-2); margin:0}
+
+/* file tree */
+.tree{margin-top:40px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:26px clamp(18px,3vw,32px); font-family:'JetBrains Mono',monospace; font-size:13px; line-height:2; color:var(--ink-2)}
+.tree .root{color:var(--navy); font-weight:600}
+.tree .dir{color:var(--accent-deep); font-weight:600}
+.tree .file{color:var(--ink)}
+.tree .cm{color:var(--faint)}
+.tree .br{color:var(--faint)}
+
+/* providers row */
+.prov{display:flex; flex-wrap:wrap; gap:10px; margin-top:24px}
+.prov .p{display:flex; align-items:center; gap:9px; background:none; border:1px solid var(--line);
+  border-radius:var(--radius); padding:10px 14px; font-size:13.5px}
+.prov .p .d{width:8px;height:8px;border-radius:50%}
+.prov .p b{font-weight:600}
+.prov .p span{color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:11px}
+
+.note{margin-top:28px; display:flex; gap:14px; align-items:flex-start; padding:2px 0 2px 18px;
+  background:none; border:none; border-left:2px solid var(--accent); border-radius:0}
+.note p{margin:0; font-size:.94rem; color:var(--ink-2)}
+.note .lab{font-family:'JetBrains Mono',monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:4px}
+
+footer{border-top:1px solid var(--line); padding:48px 0 64px; color:var(--muted)}
+footer .f-in{max-width:var(--maxw); margin:0 auto; padding:0 clamp(22px,5vw,44px); display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:center}
+footer .mono{font-size:12px}
+
+.reveal{opacity:1; transform:none}
+</style>
+</head>
+<body>
+<header class="bar" id="bar">
+  <div class="brand">
+    <svg class="glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M3 16c3.2 0 3.2-7 6.4-7s3.2 7 6.4 7 3.2-7 5.2-7" stroke="#0E6FE0" stroke-width="2" stroke-linecap="round"/>
+      <path d="M3 11c3.2 0 3.2-5 6.4-5s3.2 5 6.4 5 3.2-5 5.2-5" stroke="#10A074" stroke-width="2" stroke-linecap="round" opacity=".75"/>
+    </svg>
+    OpenFOAM Studio
+  </div>
+  <nav class="links" id="nav">
+    <a href="#idea">Idea</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#dataflow">Data flow</a>
+    <a href="#agent">Agent</a>
+    <a href="#docs">Docs</a>
+    <a href="#run">Run</a>
+    <a href="#recovery">Recovery</a>
+    <a href="#safety">Safety</a>
+    <a href="#model">Model</a>
+    <a href="#storage">Storage</a>
+  </nav>
+</header>
+
+<!-- ===================== HERO ===================== -->
+<section class="hero" id="top">
+  <h1>Plain English in.<br><span class="alt">Validated CFD out.</span></h1>
+  <p class="sub">OpenFOAM Studio is an AI desktop app that turns a sentence like <em>“simulate lid-driven cavity flow”</em> into a complete, runnable OpenFOAM case — then meshes it, solves it, and fixes its own errors.</p>
+  <div class="tagrow">
+    <span class="pill"><span class="dot" style="background:var(--azure)"></span>Electron · React · TypeScript</span>
+    <span class="pill"><span class="dot" style="background:var(--teal)"></span>Local server · SSE streaming</span>
+    <span class="pill"><span class="dot" style="background:var(--steel)"></span>Docker · OpenFOAM 13</span>
+    <span class="pill"><span class="dot" style="background:var(--mint)"></span>Bring-your-own-model</span>
+  </div>
+</section>
+
+<main>
+
+<!-- ===================== 01 IDEA ===================== -->
+<section id="idea">
+  <p class="kicker"><span class="num">01</span> The core idea</p>
+  <h2 class="reveal">Computational fluid dynamics without the boilerplate</h2>
+  <p class="lede reveal">OpenFOAM is powerful but unforgiving — a single case is a tree of finely-formatted dictionary files, and one wrong keyword aborts the solver. OpenFOAM Studio puts an <span class="hl">AI agent</span> between you and that complexity.</p>
+  <p class="reveal" style="margin-top:18px; color:var(--ink-2)">You describe the physics in words. The agent writes every case file, runs the simulation inside a sandboxed container, watches the solver logs, and when something breaks it diagnoses the failure and patches the case — looping until it converges or it has tried enough.</p>
+
+  <div class="steps reveal">
+    <div class="step">
+      <div class="n">01 — DESCRIBE</div>
+      <h4>You write a prompt</h4>
+      <p>“Lid-driven cavity, Re = 100.” The request streams to a local server, which hands it to the generation agent.</p>
+    </div>
+    <div class="step">
+      <div class="n">02 — GENERATE &amp; RUN</div>
+      <h4>The agent builds the case</h4>
+      <p>It reads docs, writes the eight dictionary files, smoke-tests the mesh and solver, then runs the full simulation in Docker.</p>
+    </div>
+    <div class="step">
+      <div class="n">03 — RECOVER &amp; SEE</div>
+      <h4>It heals, you observe</h4>
+      <p>Known errors are auto-patched and re-run. Results stream back live — logs, residual curves, and 3-D geometry.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 02 ARCHITECTURE ===================== -->
+<section id="architecture">
+  <p class="kicker"><span class="num">02</span> System architecture</p>
+  <h2 class="reveal">Five layers, one process tree</h2>
+  <p class="lede reveal">A native Electron shell launches a small HTTP server as a child process. The React UI talks to that server over HTTP and Server-Sent Events; the server orchestrates the reusable <code class="k">core/</code> modules, which in turn drive Docker, the chosen LLM, and the project files on disk.</p>
+
+  <figure class="fig reveal">
+    <svg class="diagram" viewBox="0 0 1040 612" role="img" aria-label="Layered system architecture diagram">
+      <defs>
+        <marker id="aA" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+      </defs>
+
+      <!-- Band 1: Electron -->
+      <rect class="node" x="40" y="20" width="960" height="60" rx="4"/>
+      <circle cx="66" cy="50" r="5" fill="#0F2C3D"/>
+      <text class="d-t2" x="82" y="46">Electron shell</text>
+      <text class="d-s" x="82" y="64">demo/electron-main.cjs · owns the window, spawns the server, app lifecycle</text>
+      <text class="d-lbl" x="978" y="55" text-anchor="end">DESKTOP</text>
+
+      <path class="edge" d="M520 80 L520 108" marker-end="url(#aA)"/>
+
+      <!-- Band 2: Renderer -->
+      <rect class="node" x="40" y="110" width="960" height="124" rx="4"/>
+      <circle cx="66" cy="138" r="5" fill="#0E6FE0"/>
+      <text class="d-t2" x="82" y="134">Renderer — React + TypeScript</text>
+      <text class="d-s" x="82" y="152">Vite · Tailwind v4 · shadcn/ui · Zustand stores · Monaco · vtk.js</text>
+      <g>
+        <rect class="chip" x="64"  y="170" width="142" height="46" rx="3"/><text class="d-chip" x="135" y="192" text-anchor="middle">Sidebar</text><text class="d-s" x="135" y="207" text-anchor="middle">projects</text>
+        <rect class="chip" x="214" y="170" width="142" height="46" rx="3"/><text class="d-chip" x="285" y="192" text-anchor="middle">Monaco editor</text><text class="d-s" x="285" y="207" text-anchor="middle">case files</text>
+        <rect class="chip" x="364" y="170" width="142" height="46" rx="3"/><text class="d-chip" x="435" y="192" text-anchor="middle">AI panel</text><text class="d-s" x="435" y="207" text-anchor="middle">chat</text>
+        <rect class="chip" x="514" y="170" width="142" height="46" rx="3"/><text class="d-chip" x="585" y="192" text-anchor="middle">Geometry</text><text class="d-s" x="585" y="207" text-anchor="middle">vtk.js</text>
+        <rect class="chip" x="664" y="170" width="142" height="46" rx="3"/><text class="d-chip" x="735" y="192" text-anchor="middle">Runs / Activity</text><text class="d-s" x="735" y="207" text-anchor="middle">residuals</text>
+        <rect class="chip" x="814" y="170" width="142" height="46" rx="3"/><text class="d-chip" x="885" y="192" text-anchor="middle">Settings</text><text class="d-s" x="885" y="207" text-anchor="middle">BYOK</text>
+      </g>
+
+      <path class="edge" d="M520 234 L520 270" marker-end="url(#aA)"/>
+      <g transform="translate(520,252)">
+        <rect x="-92" y="-13" width="184" height="26" rx="4" fill="#E9F2F5" stroke="#CFE0E6"/>
+        <text class="d-lbl" x="0" y="4" text-anchor="middle" fill="#0A6E70">HTTP · Server-Sent Events</text>
+      </g>
+
+      <!-- Band 3: Server -->
+      <rect class="node-tint" x="40" y="272" width="960" height="64" rx="4"/>
+      <circle cx="66" cy="304" r="5" fill="#0C9B9B"/>
+      <text class="d-t2" x="82" y="300">Local HTTP server — port 3456</text>
+      <text class="d-s" x="82" y="318">demo/server.ts · REST + SSE endpoints · serves renderer/dist · orchestration</text>
+      <text class="d-lbl" x="978" y="309" text-anchor="end">CONTROL PLANE</text>
+
+      <path class="edge" d="M520 336 L520 364" marker-end="url(#aA)"/>
+
+      <!-- Band 4: Core -->
+      <rect class="node" x="40" y="366" width="960" height="104" rx="4"/>
+      <circle cx="66" cy="394" r="5" fill="#0E86A0"/>
+      <text class="d-t2" x="82" y="390">Core modules — reusable Node.js</text>
+      <text class="d-s" x="82" y="408">pure, unit-tested orchestration of the agent, docs, Docker, and recovery</text>
+      <g>
+        <rect class="chip" x="64"  y="424" width="124" height="32" rx="3"/><text class="d-chip" x="126" y="444" text-anchor="middle">AgentLoop</text>
+        <rect class="chip" x="196" y="424" width="100" height="32" rx="3"/><text class="d-chip" x="246" y="444" text-anchor="middle">tools</text>
+        <rect class="chip" x="304" y="424" width="116" height="32" rx="3"/><text class="d-chip" x="362" y="444" text-anchor="middle">DocsIndex</text>
+        <rect class="chip" x="428" y="424" width="160" height="32" rx="3"/><text class="d-chip" x="508" y="444" text-anchor="middle">CommandRunner</text>
+        <rect class="chip" x="596" y="424" width="150" height="32" rx="3"/><text class="d-chip" x="671" y="444" text-anchor="middle">ErrorRecovery</text>
+        <rect class="chip" x="754" y="424" width="118" height="32" rx="3"/><text class="d-chip" x="813" y="444" text-anchor="middle">llm · BYOK</text>
+        <rect class="chip" x="880" y="424" width="96"  height="32" rx="3"/><text class="d-chip" x="928" y="444" text-anchor="middle">health</text>
+      </g>
+
+      <path class="edge" d="M194 470 L194 500" marker-end="url(#aA)"/>
+      <path class="edge" d="M520 470 L520 500" marker-end="url(#aA)"/>
+      <path class="edge" d="M846 470 L846 500" marker-end="url(#aA)"/>
+
+      <!-- Band 5: external -->
+      <rect class="node" x="40"  y="502" width="308" height="88" rx="4"/>
+      <circle cx="66" cy="530" r="5" fill="#2E5A72"/>
+      <text class="d-t" x="82" y="534">Docker engine</text>
+      <text class="d-s" x="62" y="556">microfluidica/openfoam:13</text>
+      <text class="d-s" x="62" y="572">allowlisted commands only</text>
+
+      <rect class="node" x="366" y="502" width="308" height="88" rx="4"/>
+      <circle cx="392" cy="530" r="5" fill="#10A074"/>
+      <text class="d-t" x="408" y="534">AI provider</text>
+      <text class="d-s" x="388" y="556">Anthropic · OpenAI · Google</text>
+      <text class="d-s" x="388" y="572">local model · claude CLI</text>
+
+      <rect class="node" x="692" y="502" width="308" height="88" rx="4"/>
+      <circle cx="718" cy="530" r="5" fill="#4F6776"/>
+      <text class="d-t" x="734" y="534">Disk</text>
+      <text class="d-s" x="714" y="556">demo/projects/&lt;id&gt;/</text>
+      <text class="d-s" x="714" y="572">meta · case · jsonl · logs</text>
+    </svg>
+    <figcaption>
+      <div class="legend">
+        <span class="li"><span class="sw" style="background:#0F2C3D"></span>Shell</span>
+        <span class="li"><span class="sw" style="background:#0E6FE0"></span>Renderer</span>
+        <span class="li"><span class="sw" style="background:#0C9B9B"></span>Server</span>
+        <span class="li"><span class="sw" style="background:#0E86A0"></span>Core</span>
+        <span class="li"><span class="sw" style="background:#2E5A72"></span>Docker</span>
+        <span class="li"><span class="sw" style="background:#10A074"></span>Model</span>
+        <span class="li"><span class="sw" style="background:#4F6776"></span>Disk</span>
+      </div>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ===================== 03 DATA FLOW ===================== -->
+<section id="dataflow">
+  <p class="kicker"><span class="num">03</span> End-to-end data flow</p>
+  <h2 class="reveal">One open request, a stream of events back</h2>
+  <p class="lede reveal">Every long operation runs as a single HTTP request that stays open while the server pushes back a stream of typed events — so the UI updates live instead of polling. First, how the stream works; then the four flows that ride on it.</p>
+
+  <div class="flows reveal">
+
+    <!-- streaming primer -->
+    <figure class="scen">
+      <div class="scen-h"><span class="lab">The pattern</span><h3>How streaming works</h3><span class="ep">Server-Sent Events</span></div>
+      <svg class="diagram" viewBox="0 0 1040 196" role="img" aria-label="Server-Sent Events streaming model">
+        <defs>
+          <marker id="sm" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+          <marker id="smg" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#10A074"/></marker>
+        </defs>
+        <rect class="node" x="20" y="32" width="300" height="96" rx="4"/>
+        <circle cx="44" cy="58" r="5" fill="#0E6FE0"/>
+        <text class="d-t" x="60" y="62">Browser UI</text>
+        <text class="d-s" x="40" y="84">React renderer</text>
+        <text class="d-s" x="40" y="104">updates live as</text>
+        <text class="d-s" x="40" y="120">each event arrives</text>
+
+        <rect class="node-tint" x="720" y="32" width="300" height="96" rx="4"/>
+        <circle cx="744" cy="58" r="5" fill="#0C9B9B"/>
+        <text class="d-t" x="760" y="62">Local server</text>
+        <text class="d-s" x="740" y="84">:3456 · demo/server.ts</text>
+        <text class="d-s" x="740" y="104">does the work, emits</text>
+        <text class="d-s" x="740" y="120">one event per step</text>
+
+        <path class="edge" d="M320 60 L716 60" marker-end="url(#sm)"/>
+        <text class="d-lbl" x="518" y="50" text-anchor="middle">1 · UI opens one request (POST)</text>
+
+        <path d="M720 100 L324 100" fill="none" stroke="#10A074" stroke-width="2.2" marker-end="url(#smg)"/>
+        <text class="d-lbl" x="518" y="120" text-anchor="middle" fill="#0B7C5A">2 · server streams many events until “done”</text>
+
+        <text class="d-s" x="520" y="172" text-anchor="middle">status · agent-step · tool-call · tool-result · file · log · residual · exit · diagnosis · done</text>
+      </svg>
+      <p class="cap">The same request/stream shape is reused by every flow below — only the events differ.</p>
+    </figure>
+
+    <!-- Flow 1: Generate -->
+    <figure class="scen">
+      <div class="scen-h"><span class="lab">Flow 1</span><h3>Generate a case from a prompt</h3><span class="ep">POST /generate</span></div>
+      <svg class="diagram" viewBox="0 0 1040 128" role="img" aria-label="Generation data flow">
+        <defs><marker id="sa" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker></defs>
+        <rect class="node-tint" x="20" y="24" width="300" height="74" rx="4"/>
+        <text class="d-t" x="170" y="58" text-anchor="middle">Your prompt</text>
+        <text class="d-s" x="170" y="78" text-anchor="middle">plain-English request</text>
+        <rect class="node" x="370" y="24" width="300" height="74" rx="4"/>
+        <text class="d-t" x="520" y="58" text-anchor="middle">Agent loop</text>
+        <text class="d-s" x="520" y="78" text-anchor="middle">reads docs · writes files</text>
+        <rect class="node" x="720" y="24" width="300" height="74" rx="4"/>
+        <text class="d-t" x="870" y="58" text-anchor="middle">case/ files</text>
+        <text class="d-s" x="870" y="78" text-anchor="middle">8 dictionaries written</text>
+        <path class="edge" d="M320 61 L366 61" marker-end="url(#sa)"/>
+        <path class="edge" d="M670 61 L716 61" marker-end="url(#sa)"/>
+      </svg>
+      <p class="cap">The agent smoke-tests the mesh and solver as it goes; every step streams to the AI panel.</p>
+    </figure>
+
+    <!-- Flow 2: Run -->
+    <figure class="scen">
+      <div class="scen-h"><span class="lab">Flow 2</span><h3>Mesh and solve in Docker</h3><span class="ep">POST /run</span></div>
+      <svg class="diagram" viewBox="0 0 1040 128" role="img" aria-label="Run pipeline data flow">
+        <defs><marker id="sb" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker></defs>
+        <rect class="node-tint" x="16" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="120" y="58" text-anchor="middle">Run click</text>
+        <text class="d-s" x="120" y="78" text-anchor="middle">start the run</text>
+        <rect class="node" x="288" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="392" y="58" text-anchor="middle">blockMesh</text>
+        <text class="d-s" x="392" y="78" text-anchor="middle">build the mesh</text>
+        <rect class="node" x="560" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="664" y="58" text-anchor="middle">foamRun</text>
+        <text class="d-s" x="664" y="78" text-anchor="middle">solve · emit residuals</text>
+        <rect class="node" x="832" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="936" y="58" text-anchor="middle">Results</text>
+        <text class="d-s" x="936" y="78" text-anchor="middle">logs · residuals · VTK</text>
+        <path class="edge" d="M224 61 L284 61" marker-end="url(#sb)"/>
+        <path class="edge" d="M496 61 L556 61" marker-end="url(#sb)"/>
+        <path class="edge" d="M768 61 L828 61" marker-end="url(#sb)"/>
+      </svg>
+      <p class="cap"><code class="k">foamToVTK</code> exports the mesh for the Geometry tab between meshing and solving; if it fails, the solver still runs.</p>
+    </figure>
+
+    <!-- Flow 3: Recover -->
+    <figure class="scen">
+      <div class="scen-h"><span class="lab">Flow 3</span><h3>Diagnose a failure and retry</h3><span class="ep">POST /apply-fix</span></div>
+      <svg class="diagram" viewBox="0 0 1040 210" role="img" aria-label="Error recovery data flow">
+        <defs>
+          <marker id="sc" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+          <marker id="scg" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#10A074"/></marker>
+        </defs>
+        <!-- retry loop arc on top -->
+        <path class="edge-d" d="M936 40 C 936 12, 120 12, 120 40" marker-end="url(#sc)"/>
+        <text class="d-lbl" x="528" y="20" text-anchor="middle">else retry — up to 3 times</text>
+
+        <rect class="node-tint" x="16" y="40" width="208" height="72" rx="4"/>
+        <text class="d-t" x="120" y="73" text-anchor="middle">Solver fails</text>
+        <text class="d-s" x="120" y="93" text-anchor="middle">FOAM FATAL ERROR</text>
+        <rect class="node" x="288" y="40" width="208" height="72" rx="4"/>
+        <text class="d-t" x="392" y="73" text-anchor="middle">Diagnose</text>
+        <text class="d-s" x="392" y="93" text-anchor="middle">match known error</text>
+        <rect class="node" x="560" y="40" width="208" height="72" rx="4"/>
+        <text class="d-t" x="664" y="73" text-anchor="middle">Apply patch</text>
+        <text class="d-s" x="664" y="93" text-anchor="middle">retryCount + 1</text>
+        <rect class="node" x="832" y="40" width="208" height="72" rx="4"/>
+        <text class="d-t" x="936" y="73" text-anchor="middle">Re-run</text>
+        <text class="d-s" x="936" y="93" text-anchor="middle">restart the run</text>
+
+        <path class="edge" d="M224 76 L284 76" marker-end="url(#sc)"/>
+        <path class="edge" d="M496 76 L556 76" marker-end="url(#sc)"/>
+        <path class="edge" d="M768 76 L828 76" marker-end="url(#sc)"/>
+
+        <!-- success outcome -->
+        <rect class="node" x="832" y="150" width="208" height="48" rx="4" stroke="#10A074" stroke-width="2"/>
+        <circle cx="856" cy="174" r="4.5" fill="#10A074"/>
+        <text class="d-t" x="872" y="179">Success · exit 0</text>
+        <path d="M936 112 L936 146" fill="none" stroke="#10A074" stroke-width="1.9" marker-end="url(#scg)"/>
+      </svg>
+      <p class="cap">Recognised failures are patched deterministically; if none match, the model is asked. After three tries it stops and shows the log.</p>
+    </figure>
+
+    <!-- Flow 4: Refine -->
+    <figure class="scen">
+      <div class="scen-h"><span class="lab">Flow 4</span><h3>Refine an existing case in chat</h3><span class="ep">POST /generate · with history</span></div>
+      <svg class="diagram" viewBox="0 0 1040 128" role="img" aria-label="Refinement data flow">
+        <defs><marker id="sd" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker></defs>
+        <rect class="node-tint" x="16" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="120" y="58" text-anchor="middle">Follow-up</text>
+        <text class="d-s" x="120" y="78" text-anchor="middle">“make it finer”</text>
+        <rect class="node" x="288" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="392" y="58" text-anchor="middle">Agent + history</text>
+        <text class="d-s" x="392" y="78" text-anchor="middle">reads chat in meta.json</text>
+        <rect class="node" x="560" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="664" y="58" text-anchor="middle">edit_case_file</text>
+        <text class="d-s" x="664" y="78" text-anchor="middle">surgical edit</text>
+        <rect class="node" x="832" y="24" width="208" height="74" rx="4"/>
+        <text class="d-t" x="936" y="58" text-anchor="middle">Updated case</text>
+        <text class="d-s" x="936" y="78" text-anchor="middle">ready to re-run</text>
+        <path class="edge" d="M224 61 L284 61" marker-end="url(#sd)"/>
+        <path class="edge" d="M496 61 L556 61" marker-end="url(#sd)"/>
+        <path class="edge" d="M768 61 L828 61" marker-end="url(#sd)"/>
+      </svg>
+      <p class="cap">Refinements reuse the saved conversation, so the agent edits the existing files instead of starting over.</p>
+    </figure>
+
+  </div>
+</section>
+
+<!-- ===================== 04 AGENT ===================== -->
+<section id="agent">
+  <p class="kicker"><span class="num">04</span> The generation agent</p>
+  <h2 class="reveal">A tool-calling loop, not a single guess</h2>
+  <p class="lede reveal">Rather than asking the model for one giant JSON dump of files, the agent is handed a toolkit and left to iterate — reading docs, writing files, and actually running the mesher and solver to check its own work. The loop ends when the model calls <code class="k">finish</code> or hits a 12-step cap.</p>
+
+  <figure class="fig reveal">
+    <svg class="diagram" viewBox="0 0 1040 344" role="img" aria-label="Agent generation loop diagram">
+      <defs>
+        <marker id="aC" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+        <marker id="aCm" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#10A074"/></marker>
+      </defs>
+
+      <!-- finish (exit) -->
+      <rect class="node" x="70" y="26" width="210" height="64" rx="4" stroke="#10A074" stroke-width="2"/>
+      <circle cx="94" cy="52" r="5" fill="#10A074"/>
+      <text class="d-t" x="108" y="50">finish</text>
+      <text class="d-s" x="90" y="72">stream files to UI · done</text>
+
+      <!-- reasoning -->
+      <rect class="node-tint" x="70" y="130" width="210" height="92" rx="4"/>
+      <text class="d-t2" x="175" y="168" text-anchor="middle">Reasoning step</text>
+      <text class="d-s" x="175" y="190" text-anchor="middle">model picks the</text>
+      <text class="d-s" x="175" y="206" text-anchor="middle">next action</text>
+
+      <!-- reasoning -> finish -->
+      <path d="M175 130 L175 94" fill="none" stroke="#10A074" stroke-width="1.9" marker-end="url(#aCm)"/>
+      <text class="d-lbl" x="216" y="114" fill="#0B7C5A">if done</text>
+
+      <!-- tool call -->
+      <rect class="node" x="360" y="130" width="200" height="92" rx="4"/>
+      <text class="d-t" x="460" y="168" text-anchor="middle">Tool call</text>
+      <text class="d-s" x="460" y="190" text-anchor="middle">toolChoice:</text>
+      <text class="d-s" x="460" y="206" text-anchor="middle">required</text>
+
+      <path class="edge" d="M280 176 L356 176" marker-end="url(#aC)"/>
+      <text class="d-lbl" x="318" y="166" text-anchor="middle">pick a tool</text>
+
+      <!-- tool groups -->
+      <rect class="chip" x="640" y="40"  width="320" height="68" rx="4"/>
+      <rect x="640" y="40" width="6" height="68" rx="3" fill="#0E6FE0"/>
+      <text class="d-t" x="668" y="70">Files</text>
+      <text class="d-s" x="668" y="90">list · read · write · edit</text>
+
+      <rect class="chip" x="640" y="130" width="320" height="68" rx="4"/>
+      <rect x="640" y="130" width="6" height="68" rx="3" fill="#0E86A0"/>
+      <text class="d-t" x="668" y="160">Docs</text>
+      <text class="d-s" x="668" y="180">search_docs · read_doc</text>
+
+      <rect class="chip" x="640" y="220" width="320" height="68" rx="4"/>
+      <rect x="640" y="220" width="6" height="68" rx="3" fill="#2E5A72"/>
+      <text class="d-t" x="668" y="250">Run (smoke-test)</text>
+      <text class="d-s" x="668" y="270">blockMesh · checkMesh · foamRun</text>
+
+      <path class="edge" d="M560 162 L636 78"  marker-end="url(#aC)"/>
+      <path class="edge" d="M560 176 L636 166" marker-end="url(#aC)"/>
+      <path class="edge" d="M560 190 L636 252" marker-end="url(#aC)"/>
+
+      <!-- return arc to reasoning -->
+      <path class="edge" d="M640 284 C 430 336, 250 326, 178 226" marker-end="url(#aC)"/>
+      <text class="d-lbl" x="404" y="330" text-anchor="middle">tool result feeds the next step</text>
+    </svg>
+    <figcaption>
+      <span class="mono" style="font-size:12px;color:var(--muted)">each call &amp; result is emitted as an event; the loop ends when the model calls finish or after 12 steps</span>
+    </figcaption>
+  </figure>
+
+  <div class="grid g3" style="margin-top:30px">
+    <div class="card reveal">
+      <span class="tag" style="background:var(--tint-2); color:var(--azure-deep)">FILE TOOLS</span>
+      <h3>Write, don't dump</h3>
+      <p>Each file is produced with <code class="k">write_case_file</code> or surgically changed with <code class="k">edit_case_file</code>. Paths are guarded inside <code class="k">case/</code> and CRLF is normalised to LF on write.</p>
+    </div>
+    <div class="card reveal">
+      <span class="tag" style="background:var(--tint-2); color:var(--cyan)">DOC TOOLS</span>
+      <h3>Grounded in real docs</h3>
+      <p><code class="k">search_docs</code> queries an index of the OpenFOAM 13 guide plus the project wiki, returning ranked snippets the agent can open in full with <code class="k">read_doc</code>.</p>
+    </div>
+    <div class="card reveal">
+      <span class="tag" style="background:var(--tint-2); color:var(--steel)">RUN TOOL</span>
+      <h3>Verifies its own work</h3>
+      <p><code class="k">run_command</code> executes <code class="k">blockMesh</code>, <code class="k">checkMesh</code>, or a short <code class="k">foamRun</code> smoke-test in Docker — so the case is proven to solve before you ever press Run.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 05 DOCS INDEX ===================== -->
+<section id="docs">
+  <p class="kicker"><span class="num">05</span> Knowledge retrieval</p>
+  <h2 class="reveal">Keyword search, no vector database</h2>
+  <p class="lede reveal">The corpus is small enough that dense embeddings add cost without accuracy. Instead, markdown is split at heading boundaries into chunks, indexed by a lightweight full-text engine, and returned as citation-style hits the agent can expand.</p>
+
+  <div class="spec">
+    <div class="kv reveal">
+      <div class="ic" style="background:var(--tint-2)">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h11l3 3v13H5z" stroke="#0E86A0" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 11h8M8 15h6" stroke="#0E86A0" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <div><h4>Chunked at H1/H2/H3</h4><p>Each chunk keeps its heading hierarchy, so a hit reads like a breadcrumb: <span class="mono" style="font-size:12px">cases › cavity › boundaries</span>.</p></div>
+    </div>
+    <div class="kv reveal">
+      <div class="ic" style="background:var(--tint-2)">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="#0C9B9B" stroke-width="1.8"/><path d="M16 16l4 4" stroke="#0C9B9B" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <div><h4>Ranked, de-duplicated hits</h4><p>FlexSearch indexes heading, body, and path; results are merged and capped at <span class="mono" style="font-size:12px">k</span> snippets per query.</p></div>
+    </div>
+    <div class="kv reveal">
+      <div class="ic" style="background:var(--tint-2)">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="3" stroke="#10A074" stroke-width="1.8"/><path d="M9 12l2 2 4-4" stroke="#10A074" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div><h4>Two sources, one index</h4><p>Scans <code class="k">docs/openfoam-v13/</code> and <code class="k">wiki/</code>; every hit is tagged with its source so the agent knows what it is reading.</p></div>
+    </div>
+    <div class="kv reveal">
+      <div class="ic" style="background:var(--tint-2)">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M5 7l7-4 7 4" stroke="#2E5A72" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div><h4>Path-guarded reads</h4><p><code class="k">read_doc</code> only resolves files under the two allowed directories — nothing outside the knowledge base can be opened.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 06 RUN PIPELINE ===================== -->
+<section id="run">
+  <p class="kicker"><span class="num">06</span> The run pipeline</p>
+  <h2 class="reveal">Mesh, export, solve — in one sandboxed sweep</h2>
+  <p class="lede reveal">Pressing Run executes three OpenFOAM commands in sequence inside the container. Each line of output is streamed to the UI and written to a per-run log; residual lines are parsed on the fly into a live convergence chart.</p>
+
+  <figure class="fig reveal">
+    <svg class="diagram" viewBox="0 0 1040 400" role="img" aria-label="Run pipeline diagram">
+      <defs>
+        <marker id="aD" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+        <linearGradient id="conv" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0E6FE0"/><stop offset="1" stop-color="#10A074"/></linearGradient>
+      </defs>
+
+      <!-- stage 1 -->
+      <rect class="node" x="40" y="40" width="270" height="118" rx="4"/>
+      <rect x="40" y="40" width="270" height="6" rx="3" fill="#0E6FE0"/>
+      <text class="d-t2" x="64" y="78">1 · blockMesh</text>
+      <text class="d-s" x="64" y="100">reads system/blockMeshDict</text>
+      <text class="d-s" x="64" y="118">builds the cells →</text>
+      <text class="d-s" x="64" y="136">constant/polyMesh</text>
+
+      <!-- stage 2 -->
+      <rect class="node" x="385" y="40" width="270" height="118" rx="4"/>
+      <rect x="385" y="40" width="270" height="6" rx="3" fill="#0E86A0"/>
+      <text class="d-t2" x="409" y="78">2 · foamToVTK</text>
+      <text class="d-s" x="409" y="100">exports mesh to case/VTK/</text>
+      <text class="d-s" x="409" y="118">feeds the Geometry tab</text>
+      <text class="d-s" x="409" y="136" fill="#0A6E70">non-essential — may skip</text>
+
+      <!-- stage 3 -->
+      <rect class="node" x="730" y="40" width="270" height="118" rx="4"/>
+      <rect x="730" y="40" width="270" height="6" rx="3" fill="#2E5A72"/>
+      <text class="d-t2" x="754" y="78">3 · foamRun</text>
+      <text class="d-s" x="754" y="100">the solver iterates</text>
+      <text class="d-s" x="754" y="118">emits residual lines →</text>
+      <text class="d-s" x="754" y="136">convergence chart</text>
+
+      <path class="edge" d="M310 99 L381 99" marker-end="url(#aD)"/>
+      <path class="edge" d="M655 99 L726 99" marker-end="url(#aD)"/>
+
+      <!-- residual chart -->
+      <rect class="node-tint" x="730" y="200" width="270" height="160" rx="4"/>
+      <text class="d-lbl" x="754" y="228" fill="#0A6E70">LIVE RESIDUALS</text>
+      <line x1="754" y1="244" x2="754" y2="336" stroke="#C7D6DD" stroke-width="1.4"/>
+      <line x1="754" y1="336" x2="976" y2="336" stroke="#C7D6DD" stroke-width="1.4"/>
+      <path d="M756 250 C 800 262, 820 300, 860 312 S 940 332, 974 333" fill="none" stroke="url(#conv)" stroke-width="2.4" stroke-linecap="round"/>
+      <circle cx="974" cy="333" r="3.5" fill="#10A074"/>
+      <text class="d-s" x="865" y="356" text-anchor="middle">iterations →</text>
+
+      <!-- outputs -->
+      <rect class="node" x="40" y="200" width="640" height="160" rx="4"/>
+      <text class="d-t" x="64" y="232">Captured every run</text>
+      <g>
+        <rect class="chip" x="64"  y="252" width="190" height="42" rx="3"/><text class="d-chip" x="84" y="278">runs.jsonl</text>
+        <rect class="chip" x="268" y="252" width="200" height="42" rx="3"/><text class="d-chip" x="288" y="278">commands.jsonl</text>
+        <rect class="chip" x="482" y="252" width="178" height="42" rx="3"/><text class="d-chip" x="502" y="278">runs/&lt;id&gt;.log</text>
+      </g>
+      <text class="d-s" x="64" y="320">exit codes, residual events, stall heartbeats and the full log are</text>
+      <text class="d-s" x="64" y="338">persisted, so a finished run can be replayed from history.</text>
+    </svg>
+    <figcaption>
+      <span class="mono" style="font-size:12px;color:var(--muted)">if foamToVTK fails the geometry export is skipped — the run continues to the solver</span>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ===================== 07 RECOVERY ===================== -->
+<section id="recovery">
+  <p class="kicker"><span class="num">07</span> Self-healing error recovery</p>
+  <h2 class="reveal">When the solver aborts, the app debugs itself</h2>
+  <p class="lede reveal">A <code class="k">FOAM FATAL ERROR</code> doesn't end the story. The log is matched against known failure classes; a recognised error produces a precise file patch. The fix is applied, the retry counter ticks up, and the run restarts — up to three times before it gives up.</p>
+
+  <figure class="fig reveal">
+    <svg class="diagram" viewBox="0 0 1040 430" role="img" aria-label="Error recovery state machine diagram">
+      <defs>
+        <marker id="aE" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#8CA3AE"/></marker>
+        <marker id="aEm" markerWidth="9" markerHeight="9" refX="6.5" refY="4" orient="auto"><path d="M0 0L8 4L0 8z" fill="#10A074"/></marker>
+      </defs>
+
+      <!-- Running -->
+      <rect class="node-tint" x="60" y="40" width="170" height="78" rx="4"/>
+      <text class="d-t2" x="145" y="76" text-anchor="middle">foamRun</text>
+      <text class="d-s" x="145" y="96" text-anchor="middle">solver running</text>
+
+      <!-- success -->
+      <rect class="node" x="60" y="312" width="170" height="78" rx="4" stroke="#10A074" stroke-width="2"/>
+      <circle cx="86" cy="338" r="5" fill="#10A074"/>
+      <text class="d-t" x="100" y="343">Success</text>
+      <text class="d-s" x="80" y="363">exit 0 · converged</text>
+      <path d="M120 118 L120 308" fill="none" stroke="#10A074" stroke-width="1.9" marker-end="url(#aEm)"/>
+      <text class="d-lbl" x="112" y="220" text-anchor="middle" fill="#0B7C5A" transform="rotate(-90 112 220)">exit 0</text>
+
+      <!-- diagnose -->
+      <rect class="node" x="320" y="40" width="190" height="78" rx="4"/>
+      <text class="d-t2" x="415" y="76" text-anchor="middle">Diagnose</text>
+      <text class="d-s" x="415" y="96" text-anchor="middle">scan the FATAL log</text>
+      <path class="edge" d="M230 79 L316 79" marker-end="url(#aE)"/>
+      <text class="d-lbl" x="273" y="69" text-anchor="middle">FATAL</text>
+
+      <!-- pattern match -->
+      <rect class="node" x="600" y="40" width="190" height="78" rx="4"/>
+      <text class="d-t" x="695" y="72" text-anchor="middle">Pattern match</text>
+      <text class="d-s" x="695" y="92" text-anchor="middle">ErrorRecovery</text>
+      <path class="edge" d="M510 79 L596 79" marker-end="url(#aE)"/>
+
+      <!-- LLM fallback -->
+      <rect class="node" x="600" y="160" width="190" height="74" rx="4"/>
+      <text class="d-t" x="695" y="192" text-anchor="middle">Ask the model</text>
+      <text class="d-s" x="695" y="212" text-anchor="middle">claudeDiagnose</text>
+      <path class="edge-d" d="M695 118 L695 156" marker-end="url(#aE)"/>
+      <text class="d-lbl" x="760" y="142" text-anchor="middle">no match</text>
+
+      <!-- apply fix -->
+      <rect class="node-tint" x="320" y="160" width="190" height="74" rx="4"/>
+      <text class="d-t2" x="415" y="192" text-anchor="middle">Apply fix</text>
+      <text class="d-s" x="415" y="212" text-anchor="middle">retryCount + 1</text>
+      <path class="edge" d="M600 197 L514 197" marker-end="url(#aE)"/>
+      <path class="edge" d="M660 118 L520 165" marker-end="url(#aE)" opacity="0"/>
+      <text class="d-lbl" x="558" y="150" text-anchor="middle">fix</text>
+
+      <!-- re-run loop back -->
+      <path class="edge" d="M345 160 C 240 120, 220 110, 195 122" marker-end="url(#aE)"/>
+      <text class="d-lbl" x="250" y="150" text-anchor="middle">re-run</text>
+
+      <!-- exhausted -->
+      <rect class="node" x="320" y="312" width="190" height="78" rx="4" stroke="#2E5A72" stroke-width="2" stroke-dasharray="6 5"/>
+      <text class="d-t" x="415" y="345" text-anchor="middle">Exhausted</text>
+      <text class="d-s" x="415" y="365" text-anchor="middle">retryCount ≥ 3 · stop</text>
+      <path class="edge-d" d="M415 234 L415 308" marker-end="url(#aE)"/>
+      <text class="d-lbl" x="468" y="276" text-anchor="middle">guard</text>
+
+      <!-- unknown -->
+      <rect class="node" x="600" y="312" width="190" height="78" rx="4" stroke="#4F6776" stroke-width="1.6" stroke-dasharray="6 5"/>
+      <text class="d-t" x="695" y="345" text-anchor="middle">Unknown error</text>
+      <text class="d-s" x="695" y="365" text-anchor="middle">shown to the user</text>
+      <path class="edge-d" d="M695 234 L695 308" marker-end="url(#aE)"/>
+
+      <!-- known error classes -->
+      <rect class="node" x="836" y="40" width="170" height="350" rx="4"/>
+      <text class="d-lbl" x="858" y="68" fill="#0A6E70">KNOWN CLASSES</text>
+      <g class="d-s" fill="#3B4F5A">
+        <text x="858" y="110">missing UFinal</text>
+        <text x="858" y="128" fill="#6A7E89">PIMPLE solver entry</text>
+        <text x="858" y="168">bad boundary type</text>
+        <text x="858" y="186" fill="#6A7E89">→ noSlip default</text>
+        <text x="858" y="226">no pressure ref</text>
+        <text x="858" y="244" fill="#6A7E89">add pRefCell / Value</text>
+        <text x="858" y="284">high Courant no.</text>
+        <text x="858" y="302" fill="#6A7E89">halve deltaT</text>
+      </g>
+      <line x1="858" y1="330" x2="984" y2="330" stroke="#E0E9ED"/>
+      <text class="d-s" x="858" y="356" fill="#6A7E89">matched in priority</text>
+      <text class="d-s" x="858" y="372" fill="#6A7E89">order, top to bottom</text>
+    </svg>
+    <figcaption>
+      <div class="legend">
+        <span class="li"><span class="sw" style="background:#10A074"></span>Converged</span>
+        <span class="li"><span class="sw" style="background:#2E5A72; border-radius:3px"></span>Gave up after 3 tries</span>
+        <span class="li"><span class="sw" style="background:#A9BDC7"></span>Solid = deterministic · dashed = model / terminal</span>
+      </div>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ===================== 08 SAFETY ===================== -->
+<section id="safety">
+  <p class="kicker"><span class="num">08</span> Safety &amp; the sandbox</p>
+  <h2 class="reveal">The agent is powerful, but it is fenced in</h2>
+  <p class="lede reveal">An autonomous agent writing files and running commands needs hard boundaries. OpenFOAM Studio never exposes a raw shell — every action passes through a narrow, audited surface.</p>
+
+  <div class="grid g4" style="margin-top:34px">
+    <div class="card reveal">
+      <span class="ix">01</span>
+      <h3>Command allowlist</h3>
+      <p>Only a fixed set — <code class="k">blockMesh</code>, <code class="k">checkMesh</code>, <code class="k">foamRun</code>, <code class="k">foamToVTK</code> and a few solvers — can reach Docker. Anything else throws.</p>
+    </div>
+    <div class="card reveal">
+      <span class="ix">02</span>
+      <h3>Path containment</h3>
+      <p>Every file path is resolved and checked to stay inside the project's <code class="k">case/</code> directory. Absolute paths, <code class="k">..</code> escapes and NUL bytes are rejected.</p>
+    </div>
+    <div class="card reveal">
+      <span class="ix">03</span>
+      <h3>Container isolation</h3>
+      <p>OpenFOAM runs in a throwaway container with only the case folder bind-mounted at <code class="k">/cavity</code>. The container is stopped and removed after each command.</p>
+    </div>
+    <div class="card reveal">
+      <span class="ix">04</span>
+      <h3>Format discipline</h3>
+      <p>Files are written with <code class="k">path.join</code> and forced to LF line endings — OpenFOAM rejects CRLF — so generated cases are portable across macOS, Linux and Windows.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 09 BYOK ===================== -->
+<section id="model">
+  <p class="kicker"><span class="num">09</span> Bring-your-own-model</p>
+  <h2 class="reveal">Your key, your provider, your choice</h2>
+  <p class="lede reveal">A single resolver maps the active provider to the right client. Cloud providers run the full tool-calling agent; a local model falls back to file-by-file generation; and if you already use Claude Code, the CLI works with no API key at all.</p>
+
+  <div class="prov" style="margin-top:30px">
+    <div class="p reveal"><span class="d" style="background:var(--mint)"></span><b>Anthropic</b><span>AI SDK · agent loop</span></div>
+    <div class="p reveal"><span class="d" style="background:var(--azure)"></span><b>OpenAI</b><span>AI SDK · agent loop</span></div>
+    <div class="p reveal"><span class="d" style="background:var(--teal)"></span><b>Google</b><span>AI SDK · agent loop</span></div>
+    <div class="p reveal"><span class="d" style="background:var(--steel)"></span><b>Local · OpenAI-compatible</b><span>LM Studio / Ollama · file-by-file</span></div>
+    <div class="p reveal"><span class="d" style="background:var(--slate)"></span><b>claude CLI</b><span>native loop · no key</span></div>
+  </div>
+
+  <div class="note reveal">
+    <div>
+      <span class="lab">Why three engines</span>
+      <p>Local models can't reliably honour <code class="k">toolChoice: 'required'</code> or emit eight files in one response without truncating — so the local path generates each dictionary in a separate call, while cloud providers get the full doc-search-and-smoke-test loop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 10 STORAGE ===================== -->
+<section id="storage">
+  <p class="kicker"><span class="num">10</span> How a project is stored</p>
+  <h2 class="reveal">Everything lives in one folder on disk</h2>
+  <p class="lede reveal">There is no database. A project is a directory: metadata, the OpenFOAM case, and append-only logs of every run and command. It is fully inspectable, portable, and easy to back up.</p>
+
+  <div class="tree reveal">
+    <div><span class="br">demo/projects/</span><span class="root">&lt;id&gt;/</span></div>
+    <div><span class="br">├─ </span><span class="file">meta.json</span><span class="cm">      — name, status, retryCount, chat messages[]</span></div>
+    <div><span class="br">├─ </span><span class="dir">case/</span><span class="cm">          — the OpenFOAM case the agent writes</span></div>
+    <div><span class="br">│   ├─ </span><span class="dir">0/</span><span class="cm">           — initial &amp; boundary fields (U, p)</span></div>
+    <div><span class="br">│   ├─ </span><span class="dir">constant/</span><span class="cm">    — physical &amp; transport properties</span></div>
+    <div><span class="br">│   └─ </span><span class="dir">system/</span><span class="cm">      — controlDict, fvSchemes, fvSolution, blockMeshDict</span></div>
+    <div><span class="br">├─ </span><span class="file">runs.jsonl</span><span class="cm">     — one record per run (status, exits, timing)</span></div>
+    <div><span class="br">├─ </span><span class="file">commands.jsonl</span><span class="cm"> — one record per command executed</span></div>
+    <div><span class="br">└─ </span><span class="dir">runs/</span><span class="br">&lt;runId&gt;</span><span class="file">.log</span><span class="cm"> — full captured output of a run</span></div>
+  </div>
+
+  <div class="grid g3" style="margin-top:34px">
+    <div class="card reveal"><span class="ix">META</span><h3>State of record</h3><p>The status field drives the whole UI — <span class="mono" style="font-size:12px">idle → generating → ready → running → done / error</span> — and the message list is the chat history the agent reads on refinement.</p></div>
+    <div class="card reveal"><span class="ix">JSONL</span><h3>Append-only history</h3><p>Runs and commands are never rewritten, only appended. The history panels read these newest-first, so nothing about a past run is ever lost.</p></div>
+    <div class="card reveal"><span class="ix">LOGS</span><h3>Replayable output</h3><p>A finished run's complete log is on disk, so the UI can show exactly what the solver printed without re-executing anything.</p></div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="f-in">
+    <div class="brand">
+      <svg class="glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 16c3.2 0 3.2-7 6.4-7s3.2 7 6.4 7 3.2-7 5.2-7" stroke="#0E6FE0" stroke-width="2" stroke-linecap="round"/>
+        <path d="M3 11c3.2 0 3.2-5 6.4-5s3.2 5 6.4 5 3.2-5 5.2-5" stroke="#10A074" stroke-width="2" stroke-linecap="round" opacity=".75"/>
+      </svg>
+      OpenFOAM Studio
+    </div>
+    <div class="mono">A visual field guide · plain English → validated CFD · meshes, solves &amp; heals in a sandbox</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var navLinks=[].slice.call(document.querySelectorAll('#nav a'));
+  var sections=navLinks.map(function(a){return document.querySelector(a.getAttribute('href'));});
+  function onScroll(){
+    var st=window.scrollY||document.documentElement.scrollTop;
+    var idx=-1, mid=st+window.innerHeight*0.3;
+    for(var i=0;i<sections.length;i++){ if(sections[i] && sections[i].offsetTop<=mid) idx=i; }
+    navLinks.forEach(function(a,i){a.classList.toggle('active', i===idx);});
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+</body>
+</html>

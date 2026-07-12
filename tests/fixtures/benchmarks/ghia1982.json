@@ -1,0 +1,24 @@
+{
+  "description": "Ghia et al. 1982 — u-velocity along vertical centerline (x=0.5) for Re=100",
+  "reference": "Ghia, U., Ghia, K.N., Shin, C.T. (1982). High-Re solutions for incompressible flow using the Navier-Stokes equations and a multigrid method. Journal of Computational Physics, 48(3), 387-411.",
+  "Re": 100,
+  "data": [
+    { "y": 0.0000, "u":  0.00000 },
+    { "y": 0.0547, "u": -0.03717 },
+    { "y": 0.0625, "u": -0.04192 },
+    { "y": 0.0703, "u": -0.04775 },
+    { "y": 0.1016, "u": -0.06434 },
+    { "y": 0.1719, "u": -0.10150 },
+    { "y": 0.2813, "u": -0.15662 },
+    { "y": 0.4531, "u": -0.21090 },
+    { "y": 0.5000, "u": -0.20581 },
+    { "y": 0.6172, "u": -0.13641 },
+    { "y": 0.7344, "u":  0.00332 },
+    { "y": 0.8516, "u":  0.23151 },
+    { "y": 0.9531, "u":  0.68717 },
+    { "y": 0.9609, "u":  0.73722 },
+    { "y": 0.9688, "u":  0.78871 },
+    { "y": 0.9766, "u":  0.84123 },
+    { "y": 1.0000, "u":  1.00000 }
+  ]
+}

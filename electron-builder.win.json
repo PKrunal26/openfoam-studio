@@ -1,0 +1,36 @@
+{
+  "appId": "com.openfoam.studio",
+  "productName": "OpenFOAM Studio",
+  "asar": false,
+  "npmRebuild": false,
+  "files": [
+    "demo/**",
+    "!demo/server.ts",
+    "renderer/dist/**",
+    "node_modules/**",
+    "!node_modules/tsx/**",
+    "!node_modules/@esbuild/**",
+    "!node_modules/esbuild/**",
+    "!node_modules/typescript/**",
+    "!node_modules/vitest/**",
+    "!node_modules/@vitest/**",
+    "!node_modules/rolldown/**",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      { "target": "nsis", "arch": ["x64"] },
+      { "target": "nsis", "arch": ["arm64"] }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "deleteAppDataOnUninstall": true
+  },
+  "directories": {
+    "output": "dist"
+  }
+}

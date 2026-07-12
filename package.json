@@ -1,0 +1,145 @@
+{
+  "name": "openfoam-studio",
+  "version": "1.0.3",
+  "description": "AI-powered OpenFOAM simulation studio",
+  "main": "demo/electron-main.cjs",
+  "scripts": {
+    "demo": "tsx demo/server.ts",
+    "app": "electron demo/electron-main.cjs",
+    "dev:renderer": "VITE_API_BASE_URL=http://localhost:3456 vite",
+    "dev": "OFS_DEV=1 concurrently -n vite,electron -c blue,magenta \"npm:dev:renderer\" \"npm:app\"",
+    "build:renderer": "vite build",
+    "build": "npm run build:renderer && npm run build:server && electron-builder --mac dmg && node scripts/postbuild.mjs",
+    "build:mac": "npm run build:renderer && npm run build:server && electron-builder --mac dmg && node scripts/postbuild.mjs",
+    "build:server": "node scripts/compile-server.mjs",
+    "build:win": "npm run build:renderer && npm run build:server && electron-builder --win --config electron-builder.win.json && node scripts/postbuild.mjs",
+    "typecheck:renderer": "tsc -p tsconfig.renderer.json --noEmit",
+    "test:stage0": "vitest run tests/stage0",
+    "test:stage1": "vitest run tests/stage1",
+    "test:stage2": "vitest run tests/stage2",
+    "test:stage3": "vitest run tests/stage3",
+    "test:stage4": "vitest run tests/stage4",
+    "test:stage5": "vitest run tests/stage5",
+    "test:agent": "vitest run tests/unit/agent",
+    "test:postprocess": "vitest run tests/unit/postprocess",
+    "scrape:docs": "tsx scripts/scrape-openfoam-docs.ts"
+  },
+  "keywords": [
+    "openfoam",
+    "cfd",
+    "computational-fluid-dynamics",
+    "simulation",
+    "electron",
+    "ai",
+    "llm",
+    "docker",
+    "fluid-dynamics",
+    "engineering"
+  ],
+  "author": "Krunal (https://github.com/PKrunal26)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PKrunal26/openfoam-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PKrunal26/openfoam-studio/issues"
+  },
+  "homepage": "https://github.com/PKrunal26/openfoam-studio#readme",
+  "type": "module",
+  "build": {
+    "appId": "com.openfoam.studio",
+    "productName": "OpenFOAM Studio",
+    "asar": false,
+    "files": [
+      "demo/**/*",
+      "core/**/*",
+      "renderer/dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "OpenFOAM Studio",
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/google": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.53",
+    "@ai-sdk/openai-compatible": "^2.0.41",
+    "@anthropic-ai/sdk": "^0.86.1",
+    "@kitware/vtk.js": "^35.11.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "ai": "^6.0.168",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dockerode": "^4.0.10",
+    "flexsearch": "^0.8.212",
+    "lucide-react": "^1.11.0",
+    "monaco-editor": "^0.55.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-resizable-panels": "^2.1.9",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/dockerode": "^4.0.1",
+    "@types/flexsearch": "^0.7.6",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/turndown": "^5.0.6",
+    "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
+    "dotenv": "^17.4.1",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "tailwindcss": "^4.2.4",
+    "tsx": "^4.21.0",
+    "turndown": "^7.2.4",
+    "tw-animate-css": "^1.4.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.10",
+    "vitest": "^4.1.4"
+  }
+}
