@@ -19,6 +19,9 @@ export type GenerateEvent =
   | { type: 'tool-progress'; id: string; line: string }
   | { type: 'tool-result'; id: string; tool: string; ok: boolean; preview?: string; durationMs: number }
   | { type: 'finish'; summary: string }
+  // Authoritative final message emitted just before `done` — matches what the
+  // server persisted, across all provider paths (agent finish, CLI, local).
+  | { type: 'finish-summary'; summary: string }
 
 export type RunEvent =
   | { type: 'run-started'; runId: string }

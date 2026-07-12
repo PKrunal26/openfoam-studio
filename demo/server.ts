@@ -31,6 +31,7 @@ import type { DiagnosisResult, FileFix } from '../core/agent/ErrorRecovery.js'
 import { applyFixes } from '../core/agent/applyFix.js'
 import { buildRunCommands, VTK_EXPORT_FIELDS } from '../core/run/buildRunCommands.js'
 import { generateWithLLM } from '../core/agent/llm.js'
+import { withCappedEndTime } from '../core/agent/tools.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.join(__dirname, '..')
@@ -58,7 +59,7 @@ const STATIC_MIME: Record<string, string> = {
   '.gif': 'image/gif',
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
-  '.woff': 'font-woff',
+  '.woff': 'font/woff',
   '.woff2': 'font/woff2',
   '.ttf': 'font/ttf',
   '.map': 'application/json; charset=utf-8',
@@ -301,6 +302,26 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
   const isRefinement = priorMessages.length > 0
   const activeProvider = getActiveProvider()
 
+  // Stop the agent (and its token spend) when the client disconnects or hits Stop.
+  const abortCtrl = new AbortController()
+  const onClientClose = () => abortCtrl.abort()
+  req.on('close', onClientClose)
+  // Paths the agent actually wrote this turn — refinement turns must not
+  // report the whole case directory as changed.
+  const writtenPaths = new Set<string>()
+  // Compact tool-call trail, persisted with the assistant message so the
+  // activity block survives after the response and across reloads.
+  const stepTrail: import('../core/agent/types.js').PersistedAgentStep[] = []
+  const stepByCallId = new Map<string, (typeof stepTrail)[number]>()
+  const summarizeToolArgs = (args: unknown): string | undefined => {
+    if (!args || typeof args !== 'object') return undefined
+    const a = args as Record<string, unknown>
+    for (const k of ['path', 'query', 'cmd']) {
+      if (typeof a[k] === 'string' && a[k]) return a[k] as string
+    }
+    return undefined
+  }
+
   if (!prompt) {
     sseWrite(res, { type: 'status', message: 'Loading validated cavity case files…' })
     files = {}
@@ -325,10 +346,25 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
     fs.mkdirSync(caseDir, { recursive: true })
 
     const onAgentEvent = (e: import('../core/agent/tools.js').AgentEvent) => {
-      // Forward all agent events except per-tool `file` notifications. The
+      // Track writes but don't forward per-tool `file` notifications. The
       // post-loop summary stream below emits authoritative `file` events with
       // full content; the live tool-call block already shows progress.
-      if (e.type === 'file') return
+      if (e.type === 'file') {
+        writtenPaths.add(e.path)
+        return
+      }
+      if (e.type === 'tool-call') {
+        const summary = summarizeToolArgs(e.args)
+        const step: (typeof stepTrail)[number] = { tool: e.tool, ok: false, ...(summary ? { summary } : {}) }
+        stepByCallId.set(e.id, step)
+        stepTrail.push(step)
+      } else if (e.type === 'tool-result') {
+        const step = stepByCallId.get(e.id)
+        if (step) {
+          step.ok = e.ok
+          step.durationMs = e.durationMs
+        }
+      }
       sseWrite(res, e)
     }
 
@@ -339,6 +375,7 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
           prompt,
           history: priorMessages,
           onEvent: onAgentEvent,
+          signal: abortCtrl.signal,
         })
         agentSummary = result.finishSummary ?? result.finalText ?? null
       } else if (activeProvider === 'openai-compatible') {
@@ -348,11 +385,13 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
         const caseFiles = await fileGen.generateFileByFile(
           prompt,
           (msg) => sseWrite(res, { type: 'status', message: msg }),
+          abortCtrl.signal,
         )
         for (const [relPath, content] of Object.entries(caseFiles)) {
           const full = path.join(caseDir, relPath)
           fs.mkdirSync(path.dirname(full), { recursive: true })
           fs.writeFileSync(full, content.replace(/\r\n/g, '\n'), 'utf8')
+          writtenPaths.add(relPath)
         }
         agentSummary = `Generated ${Object.keys(caseFiles).length} case file(s) with local model.`
       } else {
@@ -362,10 +401,19 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
           history: priorMessages,
           docker,
           onEvent: onAgentEvent,
+          signal: abortCtrl.signal,
         })
         agentSummary = result.finishSummary ?? result.finalText ?? null
       }
     } catch (err: unknown) {
+      req.off('close', onClientClose)
+      if (abortCtrl.signal.aborted) {
+        // Client cancelled — the meta the user sees next should not scream
+        // error; whatever files landed on disk are still usable.
+        writeMeta(projectId, { ...readMeta(projectId)!, status: isRefinement ? 'ready' : 'idle' })
+        res.end()
+        return
+      }
       const message = err instanceof Error ? err.message : String(err)
       writeMeta(projectId, { ...readMeta(projectId)!, status: 'error' })
       sseWrite(res, { type: 'error', message })
@@ -373,37 +421,65 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
       return
     }
 
-    // Re-list whatever the agent actually wrote to disk so downstream code
-    // (assistant message, file streaming) sees an authoritative snapshot.
+    // The agent's own writes are authoritative for "what changed this turn".
+    // A refinement turn that touched one file reports one file, and a pure
+    // Q&A turn (agent answered without editing anything) reports none.
     files = {}
-    for (const f of getAllFiles(caseDir)) {
-      files[f.relPath] = fs.readFileSync(f.path, 'utf8')
+    for (const relPath of writtenPaths) {
+      const full = path.join(caseDir, relPath)
+      if (fs.existsSync(full)) files[relPath] = fs.readFileSync(full, 'utf8')
     }
-    if (Object.keys(files).length === 0) {
+    // Claude CLI runs don't reliably emit file events — fall back to a full
+    // case scan on non-refinement turns, where everything on disk is new.
+    if (Object.keys(files).length === 0 && !isRefinement) {
+      for (const f of getAllFiles(caseDir)) {
+        files[f.relPath] = fs.readFileSync(f.path, 'utf8')
+      }
+    }
+    if (Object.keys(files).length === 0 && !(agentSummary && agentSummary.trim())) {
       const message = 'Agent finished without writing any case files. Try again, or check the provider/API error details above.'
       writeMeta(projectId, { ...readMeta(projectId)!, status: 'error' })
       sseWrite(res, { type: 'error', message })
       res.end()
       return
     }
+
+    // The AI-SDK loop already validated in-loop; claude-cli and local models
+    // could not. Validate here so the user's first Run doesn't hit the first
+    // FOAM FATAL ERROR that the model never saw.
+    const engineValidatesInLoop = activeProvider !== 'claude-cli' && activeProvider !== 'openai-compatible'
+    if (!engineValidatesInLoop && Object.keys(files).length > 0 && !abortCtrl.signal.aborted) {
+      sseWrite(res, { type: 'status', message: 'Validating the case with blockMesh + a short foamRun…' })
+      const validation = await validateGeneratedCase(caseDir, onAgentEvent, abortCtrl.signal)
+      if (validation) {
+        for (const rel of validation.fixedFiles) {
+          const full = path.join(caseDir, rel)
+          if (fs.existsSync(full)) {
+            files[rel] = fs.readFileSync(full, 'utf8')
+            writtenPaths.add(rel)
+          }
+        }
+        agentSummary = agentSummary?.trim()
+          ? `${agentSummary.trim()}\n\n${validation.note}`
+          : validation.note
+      }
+    }
   }
+  req.off('close', onClientClose)
 
   const filesChanged = Object.keys(files)
-  const assistantContent = (() => {
-    if (agentSummary && agentSummary.trim().length > 0) {
-      return filesChanged.length > 0
-        ? `${agentSummary}\n\nUpdated ${filesChanged.length} file(s): ${filesChanged.join(', ')}.`
-        : agentSummary
-    }
-    return filesChanged.length > 0
-      ? `Updated ${filesChanged.length} file(s): ${filesChanged.join(', ')}.`
-      : 'No files needed to change.'
-  })()
+  // The file list lives in `filesChanged` (rendered as clickable chips by the
+  // UI) — don't duplicate it into the message text.
+  const assistantContent = agentSummary?.trim()
+    || (filesChanged.length > 0
+      ? `Updated ${filesChanged.length} file${filesChanged.length === 1 ? '' : 's'}.`
+      : 'No files needed to change.')
   const assistantMessage: Message = {
     role: 'assistant',
     content: assistantContent,
     timestamp: new Date().toISOString(),
     filesChanged,
+    ...(stepTrail.length > 0 ? { agentSteps: stepTrail } : {}),
   }
   const currentMeta = readMeta(projectId)!
   writeMeta(projectId, {
@@ -412,7 +488,8 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
     messages: [...(currentMeta.messages ?? []), assistantMessage],
   })
 
-  // Stream files one-by-one with delay
+  // Stream files in case-logical order. The short delay keeps the UI cascade
+  // readable without meaningfully slowing the turn down.
   const ORDER = [
     'system/controlDict', 'constant/physicalProperties', 'constant/momentumTransport',
     'system/blockMeshDict', 'system/fvSchemes', 'system/fvSolution', '0/U', '0/p',
@@ -424,9 +501,10 @@ async function handleGenerate(projectId: string, req: http.IncomingMessage, res:
 
   for (const [relPath, content] of sorted) {
     sseWrite(res, { type: 'file', path: relPath, content })
-    await sleep(350)
+    await sleep(60)
   }
 
+  sseWrite(res, { type: 'finish-summary', summary: assistantContent })
   sseWrite(res, { type: 'done' })
   res.end()
 }
@@ -462,7 +540,11 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
   const writeRunLog = (line: string) => { runLogStream.write(line + '\n') }
 
   let clientAborted = false
-  const onClose = () => { clientAborted = true }
+  const runAbort = new AbortController()
+  const onClose = () => {
+    clientAborted = true
+    runAbort.abort()
+  }
   req.on('close', onClose)
 
   let runFinalized = false
@@ -510,6 +592,8 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
   let exhausted = false
 
   for (const { cmd, args } of commands) {
+    // Stop button / closed window: don't start the next pipeline stage.
+    if (clientAborted) break
     const header = `\n> ${cmd} ${args.join(' ')}`
     sseWrite(res, { type: 'log', line: header })
     writeRunLog(header)
@@ -519,6 +603,7 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
         command: cmd,
         args,
         caseDir,
+        signal: runAbort.signal,
         onLine: line => {
           lastLogTime = Date.now()
           if (cmd === 'foamRun') {
@@ -553,9 +638,43 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
         durationMs: Date.now() - cmdStart,
       } satisfies CommandRecord)
       if (exitCode !== 0) {
+        // A kill from the Stop button shows up as a non-zero exit — that's an
+        // abort, not a solver failure. Skip diagnosis and error status.
+        if (clientAborted) break
         // foamToVTK is non-essential — the geometry tab degrades gracefully if
         // the mesh export fails. Don't fail the run on its account.
         if (cmd === 'foamToVTK') {
+          // OF13 incompressibleVoF writes literal `nan` into the reconstructed
+          // p field, which foamToVTK refuses to parse — everything else in the
+          // case is fine. Retry once without p so the Results tab still gets
+          // U/p_rgh/alpha data instead of nothing.
+          const fieldsIdx = args.indexOf('-fields')
+          const fieldsArg = fieldsIdx >= 0 ? args[fieldsIdx + 1] : undefined
+          if (fieldsArg && /(?<![\w.])p(?![\w.])/.test(fieldsArg)) {
+            const withoutP = fieldsArg.replace(/(?<![\w.])p(?![\w.])\s*/, '').replace(/\(\s+/, '(')
+            const retryArgs = [...args]
+            retryArgs[fieldsIdx + 1] = withoutP
+            const retryLine = `[foamToVTK failed (exit ${exitCode}); retrying without the p field]`
+            sseWrite(res, { type: 'log', line: retryLine })
+            writeRunLog(retryLine)
+            try {
+              const retryExit = await runDockerCommand(docker, {
+                command: 'foamToVTK',
+                args: retryArgs,
+                caseDir,
+                signal: runAbort.signal,
+                onLine: line => {
+                  lastLogTime = Date.now()
+                  sseWrite(res, { type: 'log', line })
+                  writeRunLog(line)
+                },
+              })
+              const retryDone = `[foamToVTK retry exited with code ${retryExit}]`
+              sseWrite(res, { type: 'log', line: retryDone })
+              writeRunLog(retryDone)
+              if (retryExit === 0) continue
+            } catch { /* fall through to skip */ }
+          }
           const skipLine = `[foamToVTK failed (exit ${exitCode}); geometry export skipped]`
           sseWrite(res, { type: 'log', line: skipLine })
           writeRunLog(skipLine)
@@ -590,7 +709,44 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
         }
         break
       }
-      if (cmd === 'foamRun') solverOk = true
+      if (cmd === 'foamRun') {
+        const diverged = findDivergedField(caseDir)
+        if (diverged) {
+          const currentMeta = readMeta(projectId)!
+          writeMeta(projectId, { ...currentMeta, status: 'error' })
+          runErrorMessage = `Solution diverged: ${diverged.field} is nan at t=${diverged.time} (foamRun exited 0 but the numbers are dead)`
+          const divLine = `\n[${runErrorMessage}]`
+          sseWrite(res, { type: 'log', line: divLine })
+          writeRunLog(divLine)
+          sseWrite(res, { type: 'error', message: runErrorMessage })
+          if ((currentMeta.retryCount ?? 0) >= 3) {
+            exhausted = true
+            sseWrite(res, { type: 'exhausted' })
+          } else {
+            // Route divergence through the same diagnosis → apply-fix loop as
+            // a fatal. Rule-based diagnose() keys off log text, so append an
+            // explicit divergence marker for the LLM fallback.
+            const divergenceNote =
+              `SOLUTION DIVERGED (no FATAL ERROR): field ${diverged.field} contains nan at time ${diverged.time}. ` +
+              `Typical causes: time step too large for the physics (reduce maxDeltaT / add maxAlphaCo), ` +
+              `missing or wrong pressure reference, bad initial conditions, or unbounded interface compression.`
+            const askLine = '\n[Asking the model to diagnose the divergence...]'
+            sseWrite(res, { type: 'log', line: askLine })
+            writeRunLog(askLine)
+            const aiDiagnosis = await claudeDiagnose(
+              `${logBuffer.slice(-50).join('\n')}\n\n${divergenceNote}`,
+              caseDir,
+            )
+            if (aiDiagnosis && aiDiagnosis.fix.length > 0) {
+              sseWrite(res, { type: 'diagnosis', result: aiDiagnosis })
+            } else {
+              sseWrite(res, { type: 'unknown-error', log: `${logBuffer.slice(-40).join('\n')}\n${divergenceNote}` })
+            }
+          }
+          break
+        }
+        solverOk = true
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       appendJsonl(projectCommandsJsonl(projectId), {
@@ -602,6 +758,7 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
         durationMs: Date.now() - cmdStart,
         errorMessage: message,
       } satisfies CommandRecord)
+      if (clientAborted) break
       // foamToVTK throw is non-fatal — keep going to the solver.
       if (cmd === 'foamToVTK') {
         const skipLine = `[foamToVTK threw: ${message}; geometry export skipped]`
@@ -623,6 +780,8 @@ async function handleRun(projectId: string, req: http.IncomingMessage, res: http
   req.off('close', onClose)
 
   if (solverOk) writeMeta(projectId, { ...readMeta(projectId)!, status: 'done' })
+  // Aborted runs are not failures — the case files are still intact.
+  else if (clientAborted) writeMeta(projectId, { ...readMeta(projectId)!, status: 'ready' })
 
   const finalStatus: RunRecord['status'] = clientAborted
     ? 'aborted'
@@ -684,6 +843,233 @@ async function handlePostprocess(projectId: string, req: http.IncomingMessage, r
   }
   sseWrite(res, { type: 'done' })
   res.end()
+}
+
+// ── Post-generation validation ────────────────────────────────────────────────
+// The AI-SDK agent loop validates with Docker in-loop, but the claude-cli and
+// openai-compatible engines can't run commands while generating. Historically
+// those cases hit their first FOAM FATAL ERROR at the Run button. This loop
+// runs blockMesh → [setFields] → short foamRun right after generation and
+// feeds fatals back through the existing diagnosis + applyFixes machinery.
+
+const VALIDATION_MAX_FIX_ROUNDS = 2
+
+interface ValidationOutcome {
+  ok: boolean
+  note: string
+  fixedFiles: string[]
+}
+
+/**
+ * Detect a silently diverged solve: OpenFOAM can march to endTime writing
+ * `nan` everywhere and still exit 0. Scan the latest written time dir for nan
+ * so the app reports an honest failure instead of a dead "success".
+ */
+function findDivergedField(caseDir: string): { field: string; time: string } | null {
+  const dirs = [...listTimeDirs(caseDir)]
+  if (dirs.length === 0) return null
+  const latest = dirs.sort((a, b) => parseFloat(a) - parseFloat(b)).pop()!
+  const dirPath = path.join(caseDir, latest)
+  for (const name of fs.readdirSync(dirPath)) {
+    const full = path.join(dirPath, name)
+    if (!fs.statSync(full).isFile()) continue
+    try {
+      // Fields are ASCII; nan appears early when present. Cap the read.
+      const fd = fs.openSync(full, 'r')
+      const buf = Buffer.alloc(256 * 1024)
+      const bytes = fs.readSync(fd, buf, 0, buf.length, 0)
+      fs.closeSync(fd)
+      if (/(?:^|[\s(])nan(?:[\s)]|$)/.test(buf.toString('utf8', 0, bytes))) {
+        return { field: name, time: latest }
+      }
+    } catch { /* unreadable — skip */ }
+  }
+  return null
+}
+
+/** Numeric solver-output time directories (0.02, 1e-05, …) — never "0". */
+function listTimeDirs(caseDir: string): Set<string> {
+  const out = new Set<string>()
+  if (!fs.existsSync(caseDir)) return out
+  for (const entry of fs.readdirSync(caseDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === '0') continue
+    if (/^\d+(\.\d+)?([eE][+-]?\d+)?$/.test(entry.name)) out.add(entry.name)
+  }
+  return out
+}
+
+async function validateGeneratedCase(
+  caseDir: string,
+  onEvent: (e: import('../core/agent/tools.js').AgentEvent) => void,
+  signal: AbortSignal,
+): Promise<ValidationOutcome | null> {
+  const preexistingTimeDirs = listTimeDirs(caseDir)
+  try {
+    return await runValidationRounds(caseDir, onEvent, signal)
+  } finally {
+    // The smoke run must be side-effect free: partial time dirs left behind
+    // make the real Run resume mid-way and can poison foamToVTK (e.g. nan p
+    // fields written by a truncated VoF step).
+    for (const dir of listTimeDirs(caseDir)) {
+      if (!preexistingTimeDirs.has(dir)) {
+        fs.rmSync(path.join(caseDir, dir), { recursive: true, force: true })
+      }
+    }
+  }
+}
+
+async function runValidationRounds(
+  caseDir: string,
+  onEvent: (e: import('../core/agent/tools.js').AgentEvent) => void,
+  signal: AbortSignal,
+): Promise<ValidationOutcome | null> {
+  const fixedFiles: string[] = []
+  const appliedFixDescriptions: string[] = []
+
+  for (let round = 0; round <= VALIDATION_MAX_FIX_ROUNDS; round++) {
+    if (signal.aborted) return null
+    const pipeline: string[] = [
+      'blockMesh',
+      ...(fs.existsSync(path.join(caseDir, 'system', 'setFieldsDict')) ? ['setFields'] : []),
+      'foamRun',
+    ]
+
+    let fatalLog: string | null = null
+    let fatalCmd = ''
+    for (const cmd of pipeline) {
+      if (signal.aborted) return null
+      const callId = `validate_${cmd}_${round}`
+      onEvent({ type: 'tool-call', id: callId, tool: 'run_command', args: { cmd } })
+      const lines: string[] = []
+      const started = Date.now()
+      let exitCode: number
+      try {
+        let lastSent = 0
+        const runIt = () =>
+          runDockerCommand(docker, {
+            command: cmd,
+            args: [],
+            caseDir,
+            signal,
+            onLine: (line) => {
+              lines.push(line)
+              const now = Date.now()
+              if (now - lastSent >= 150) {
+                onEvent({ type: 'tool-progress', id: callId, line })
+                lastSent = now
+              }
+            },
+          })
+        // foamRun has no -endTime flag — cap via a temporary controlDict edit.
+        exitCode = cmd === 'foamRun' ? await withCappedEndTime(caseDir, 20, runIt) : await runIt()
+      } catch (err) {
+        // Docker itself unavailable (daemon down, image missing) — validation
+        // can't run at all. Don't fail the generation over infrastructure.
+        onEvent({
+          type: 'tool-result',
+          id: callId,
+          tool: 'run_command',
+          ok: false,
+          preview: `validation skipped: ${err instanceof Error ? err.message : String(err)}`,
+          durationMs: Date.now() - started,
+        })
+        return null
+      }
+      const tail = lines.slice(-30).join('\n')
+      onEvent({
+        type: 'tool-result',
+        id: callId,
+        tool: 'run_command',
+        ok: exitCode === 0,
+        preview: exitCode === 0 ? `${cmd} exit 0` : preview40Lines(tail),
+        durationMs: Date.now() - started,
+      })
+      if (exitCode !== 0) {
+        if (signal.aborted) return null
+        fatalLog = lines.join('\n')
+        fatalCmd = cmd
+        break
+      }
+      if (cmd === 'foamRun') {
+        // Exit 0 with nan fields is a diverged solve, not a pass.
+        const diverged = findDivergedField(caseDir)
+        if (diverged) {
+          fatalLog =
+            `${lines.slice(-40).join('\n')}\n\nSOLUTION DIVERGED (no FATAL ERROR): field ${diverged.field} ` +
+            `contains nan at time ${diverged.time}. Typical causes: time step too large for the physics ` +
+            `(reduce maxDeltaT / add maxAlphaCo), missing or wrong pressure reference, bad initial ` +
+            `conditions, or unbounded interface compression.`
+          fatalCmd = 'foamRun'
+          onEvent({
+            type: 'tool-result',
+            id: `validate_diverged_${round}`,
+            tool: 'run_command',
+            ok: false,
+            preview: `foamRun exit 0 but ${diverged.field} is nan at t=${diverged.time} — diverged`,
+            durationMs: 0,
+          })
+          break
+        }
+      }
+    }
+
+    if (!fatalLog) {
+      const note =
+        appliedFixDescriptions.length > 0
+          ? `Validated automatically: blockMesh and a 20-step foamRun smoke-test pass (after ${appliedFixDescriptions.length} automatic fix${appliedFixDescriptions.length === 1 ? '' : 'es'}: ${appliedFixDescriptions.join('; ')}).`
+          : 'Validated automatically: blockMesh and a 20-step foamRun smoke-test pass.'
+      return { ok: true, note, fixedFiles }
+    }
+
+    if (round === VALIDATION_MAX_FIX_ROUNDS) {
+      const firstFatal = fatalLog.split('\n').find((l) => l.includes('FATAL')) ?? `${fatalCmd} failed`
+      return {
+        ok: false,
+        note: `⚠️ Automatic validation could not get the case running: \`${firstFatal.trim()}\`. Press Run to see the full log, or tell me the error and I'll fix it.`,
+        fixedFiles,
+      }
+    }
+
+    // Diagnose: fast rule-based first, then LLM fallback.
+    const ruleDiagnosis = diagnose(fatalLog)
+    const diagnosis = ruleDiagnosis ?? (await claudeDiagnose(fatalLog.split('\n').slice(-60).join('\n'), caseDir))
+    if (!diagnosis || diagnosis.fix.length === 0) {
+      const firstFatal = fatalLog.split('\n').find((l) => l.includes('FATAL')) ?? `${fatalCmd} failed`
+      return {
+        ok: false,
+        note: `⚠️ ${fatalCmd} fails and I couldn't determine a safe automatic fix: \`${firstFatal.trim()}\`. Press Run for the full log, or paste the error here.`,
+        fixedFiles,
+      }
+    }
+    const applyResult = applyFixes(caseDir, diagnosis.fix)
+    if (!applyResult.ok) {
+      return {
+        ok: false,
+        note: `⚠️ ${fatalCmd} fails; the suggested fix could not be applied (${applyResult.message}). Press Run for the full log.`,
+        fixedFiles,
+      }
+    }
+    for (const f of diagnosis.fix) {
+      fixedFiles.push(f.file)
+      appliedFixDescriptions.push(`${f.file}: ${f.description}`)
+      const fixId = `validate_fix_${round}_${f.file}`
+      onEvent({ type: 'tool-call', id: fixId, tool: 'edit_case_file', args: { path: f.file } })
+      onEvent({
+        type: 'tool-result',
+        id: fixId,
+        tool: 'edit_case_file',
+        ok: true,
+        preview: f.description,
+        durationMs: 0,
+      })
+    }
+  }
+  return null
+}
+
+function preview40Lines(text: string, max = 400): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  return t.length > max ? t.slice(0, max - 1) + '…' : t
 }
 
 // ── Claude-based fallback diagnosis ──────────────────────────────────────────
@@ -839,15 +1225,10 @@ const server = http.createServer(async (req, res) => {
     if (payload.provider) next.llmProvider = payload.provider
     const effectiveProvider = next.llmProvider ?? getActiveProvider(prev)
     if (payload.model !== undefined || payload.provider) {
+      // Accept any non-empty model ID — MODEL_OPTIONS is a suggestion list,
+      // not an allowlist, so users can select models newer than this build.
       const requestedModel = payload.model?.trim()
-      const options = MODEL_OPTIONS[effectiveProvider]
-      if (options && options.length > 0) {
-        next.llmModel = options.some((m) => m.id === requestedModel)
-          ? requestedModel
-          : DEFAULT_MODEL[effectiveProvider]
-      } else {
-        next.llmModel = requestedModel || DEFAULT_MODEL[effectiveProvider] || undefined
-      }
+      next.llmModel = requestedModel || DEFAULT_MODEL[effectiveProvider] || undefined
     }
     if (payload.customBaseURL !== undefined) next.customBaseURL = payload.customBaseURL.trim() || undefined
 
@@ -1185,6 +1566,9 @@ server.on('error', (err: NodeJS.ErrnoException) => {
   throw err
 })
 
-server.listen(PORT, () => {
-  console.log(`OpenFOAM Studio server listening on http://localhost:${PORT}`)
+// Bind loopback only — this server exposes project files and Docker execution,
+// so it must never listen on LAN interfaces. Override with OFS_HOST at your own risk.
+const HOST = process.env.OFS_HOST ?? '127.0.0.1'
+server.listen(PORT, HOST, () => {
+  console.log(`OpenFOAM Studio server listening on http://${HOST}:${PORT}`)
 })

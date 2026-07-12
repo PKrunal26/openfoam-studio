@@ -32,14 +32,26 @@ export interface ModelOption {
 }
 
 export const DEFAULT_MODEL: Record<LLMProvider, string> = {
-  'claude-cli': 'claude-sonnet-4-6',
-  anthropic: 'claude-sonnet-4-6',
+  // The claude CLI resolves aliases (sonnet/opus/haiku) to the current best
+  // build of that tier, so we never ship a stale pinned ID for it.
+  'claude-cli': 'sonnet',
+  anthropic: 'claude-sonnet-5',
   openai: 'gpt-5.2',
   google: 'gemini-2.5-pro',
   'openai-compatible': '',
 }
 
 export const MODEL_OPTIONS: Partial<Record<LLMProvider, ModelOption[]>> = {
+  'claude-cli': [
+    { id: 'sonnet', label: 'Sonnet (recommended)' },
+    { id: 'opus', label: 'Opus (most capable)' },
+    { id: 'haiku', label: 'Haiku (fastest)' },
+  ],
+  anthropic: [
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  ],
   openai: [
     { id: 'gpt-5.2', label: 'GPT-5.2' },
     { id: 'gpt-5.1', label: 'GPT-5.1' },
@@ -48,10 +60,10 @@ export const MODEL_OPTIONS: Partial<Record<LLMProvider, ModelOption[]>> = {
     { id: 'gpt-4.1', label: 'GPT-4.1' },
   ],
   google: [
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' },
     { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' },
   ],
 }
 
@@ -116,12 +128,11 @@ export function getActiveProvider(cfg: AppConfig = readConfig()): LLMProvider {
 
 export function getActiveModel(cfg: AppConfig = readConfig()): string {
   const provider = getActiveProvider(cfg)
+  // Any non-empty configured model wins, including IDs not in MODEL_OPTIONS —
+  // the dropdown lists are suggestions, not an allowlist, so users can point
+  // at models released after this build.
   const configured = cfg.llmModel?.trim()
-  const options = MODEL_OPTIONS[provider]
-  if (configured && (!options || options.some((m) => m.id === configured))) {
-    return configured
-  }
-  return DEFAULT_MODEL[provider]
+  return configured || DEFAULT_MODEL[provider]
 }
 
 export function getProviderKey(provider: LLMProvider, cfg: AppConfig = readConfig()): string | undefined {

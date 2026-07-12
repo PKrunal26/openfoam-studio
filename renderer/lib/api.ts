@@ -7,7 +7,15 @@ export interface ProjectMeta {
   status: 'idle' | 'generating' | 'running' | 'ready' | 'done' | 'error'
   createdAt: string
   retryCount?: number
-  messages?: Array<{ role: string; content: string; ts?: string; filesChanged?: string[] }>
+  messages?: Array<{
+    role: string
+    content: string
+    ts?: string
+    /** Server-side field name; ts kept for older payloads. */
+    timestamp?: string
+    filesChanged?: string[]
+    agentSteps?: Array<{ tool: string; summary?: string; ok: boolean; durationMs?: number }>
+  }>
 }
 
 export interface CaseFile {

@@ -49,8 +49,14 @@ export function TopBar({
       <div className="flex items-center gap-1.5">
         <button
           onClick={onGenerate}
-          disabled={!onGenerate || generating}
-          title={generating ? 'Generation in progress' : 'Open the assistant'}
+          disabled={!onGenerate || generating || running}
+          title={
+            generating
+              ? 'Generation in progress'
+              : running
+                ? 'Wait for the run to finish'
+                : 'Open the assistant'
+          }
           className={cn(
             'inline-flex h-7 items-center rounded-md border bg-background px-2.5 text-xs font-medium',
             'text-foreground hover:bg-accent disabled:opacity-50',
@@ -72,7 +78,8 @@ export function TopBar({
         ) : (
           <button
             onClick={onRun}
-            disabled={!onRun}
+            disabled={!onRun || generating}
+            title={generating ? 'Wait for generation to finish — case files are still being written' : 'Mesh and solve the case'}
             className={cn(
               'inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium',
               'text-primary-foreground hover:bg-primary/90 disabled:opacity-50',

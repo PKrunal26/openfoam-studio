@@ -1,5 +1,6 @@
 import { Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from 'lucide-react'
 import { useResultsStore } from '@/store/useResultsStore'
+import { Select } from '@/components/ui/select'
 
 const SPEEDS = [0.5, 1, 2, 5, 10]
 
@@ -66,11 +67,12 @@ export function TimeTransport({ times }: { times: number[] }) {
         t = {times.length ? formatTime(times[index]!) : '—'} s · {times.length ? index + 1 : 0}/{times.length}
       </span>
 
-      <select
+      <Select
         title="Playback speed (steps per second)"
-        className="h-6 rounded-sm border bg-background px-1 text-[11px] text-foreground"
+        size="sm"
+        className="w-16 shrink-0"
         value={String(speed)}
-        onChange={(e) => setSpeed(Number(e.target.value))}
+        onChange={(v) => setSpeed(Number(v))}
         disabled={disabled}
       >
         {SPEEDS.map((s) => (
@@ -78,7 +80,7 @@ export function TimeTransport({ times }: { times: number[] }) {
             {s}×
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   )
 }

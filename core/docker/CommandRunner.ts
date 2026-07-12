@@ -21,6 +21,8 @@ export interface RunDockerCommandOptions {
   args: string[]
   caseDir: string
   onLine?: (line: string) => void
+  /** Abort kills the container, which ends the exec stream with a non-zero exit. */
+  signal?: AbortSignal
 }
 
 function shellEscape(value: string): string {
@@ -31,11 +33,12 @@ export async function runDockerCommand(
   docker: Docker,
   options: RunDockerCommandOptions
 ): Promise<number> {
-  const { command, args, caseDir, onLine } = options
+  const { command, args, caseDir, onLine, signal } = options
 
   if (!ALLOWED_DOCKER_COMMANDS.has(command)) {
     throw new Error(`Docker command is not allowlisted: ${command}`)
   }
+  if (signal?.aborted) throw new Error('aborted before start')
 
   const container = await docker.createContainer({
     Image: OPENFOAM_IMAGE,
@@ -45,6 +48,13 @@ export async function runDockerCommand(
     HostConfig: { Mounts: [{ Type: 'bind', Source: caseDir, Target: '/cavity' }] },
   })
   await container.start()
+
+  const onAbort = () => {
+    // SIGKILL the whole container; the exec's stream ends and cleanup in
+    // `finally` handles remove. Errors here mean it's already gone.
+    container.kill().catch(() => {})
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
 
   try {
     const argString = args.map(shellEscape).join(' ')
@@ -87,6 +97,7 @@ export async function runDockerCommand(
     }
     return info.ExitCode ?? -1
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     try { await container.stop({ t: 5 }) } catch { /* already stopped */ }
     try { await container.remove() } catch { /* already removed */ }
   }

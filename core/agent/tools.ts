@@ -89,6 +89,55 @@ function preview(text: string, max = 240): string {
   return t.length > max ? t.slice(0, max - 1) + '…' : t
 }
 
+/** Parse deltaT/startTime from system/controlDict for smoke-test endTime capping. */
+export function readTimeControls(caseDir: string): { deltaT: number; startTime: number } {
+  let deltaT = 0.005
+  let startTime = 0
+  try {
+    const content = fs.readFileSync(path.join(caseDir, 'system', 'controlDict'), 'utf8')
+    const dt = /(?:^|\n)\s*deltaT\s+([0-9.eE+-]+)\s*;/.exec(content)
+    const st = /(?:^|\n)\s*startTime\s+([0-9.eE+-]+)\s*;/.exec(content)
+    const dtv = dt ? parseFloat(dt[1]!) : NaN
+    const stv = st ? parseFloat(st[1]!) : NaN
+    if (Number.isFinite(dtv) && dtv > 0) deltaT = dtv
+    if (Number.isFinite(stv) && stv >= 0) startTime = stv
+  } catch { /* keep defaults */ }
+  return { deltaT, startTime }
+}
+
+/**
+ * Run `fn` with system/controlDict's endTime temporarily capped to
+ * startTime + steps·deltaT, restoring the original file afterwards.
+ *
+ * foamRun has no -endTime CLI flag (OF13 rejects it with "Invalid option"),
+ * so a bounded smoke-test has to go through the dictionary itself.
+ */
+export async function withCappedEndTime<T>(
+  caseDir: string,
+  steps: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const controlDictPath = path.join(caseDir, 'system', 'controlDict')
+  const original = fs.readFileSync(controlDictPath, 'utf8')
+  const { deltaT, startTime } = readTimeControls(caseDir)
+  const target = startTime + steps * deltaT
+  const capped = original.replace(
+    /((?:^|\n)\s*)endTime\s+[^;]+;/,
+    `$1endTime         ${target};`,
+  )
+  if (capped === original && !/(?:^|\n)\s*endTime\s/.test(original)) {
+    // No endTime entry at all — leave the dict alone; foamRun will fail with
+    // a clear message the model can act on.
+    return fn()
+  }
+  fs.writeFileSync(controlDictPath, capped, 'utf8')
+  try {
+    return await fn()
+  } finally {
+    fs.writeFileSync(controlDictPath, original, 'utf8')
+  }
+}
+
 /**
  * Wrap a tool `execute` so call/result events are emitted automatically and
  * errors are caught and reported as `ok: false` results (the AI SDK then
@@ -297,42 +346,44 @@ export function makeTools(opts: MakeToolsOptions) {
             throw new Error('cannot run mesh commands before system/blockMeshDict exists')
           }
           if (!docker) throw new Error('Docker is not available in this environment')
-          const args: string[] = []
-          if (input.cmd === 'foamRun') {
-            const steps = Math.min(input.steps ?? 5, maxSolverSteps)
-            // foamRun takes "-endTime" / "-deltaT" flags; we cap by overriding endTime
-            // proportionally. Most cases use deltaT=0.005, so 5 steps ≈ endTime 0.025.
-            // Simplest portable approach: pass -endTime=<steps*0.005>.
-            args.push(`-endTime`, String(steps * 0.005))
-          }
-
           const captured: string[] = []
           let lastSent = Date.now()
           let exitCode = -1
-          try {
-            exitCode = await runDockerCommand(docker, {
-              command: input.cmd,
-              args,
-              caseDir,
-              onLine: (line) => {
-                captured.push(line)
-                // Throttle to 1 line / 80ms so the UI doesn't drown.
-                const now = Date.now()
-                if (now - lastSent >= 80 || captured.length <= 5) {
-                  onEvent({ type: 'tool-progress', id, line })
-                  lastSent = now
-                }
-              },
-            })
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err)
-            throw new Error(`docker exec failed: ${message}`)
+          const runIt = async () => {
+            try {
+              exitCode = await runDockerCommand(docker, {
+                command: input.cmd,
+                args: [],
+                caseDir,
+                onLine: (line) => {
+                  captured.push(line)
+                  // Throttle to 1 line / 80ms so the UI doesn't drown.
+                  const now = Date.now()
+                  if (now - lastSent >= 80 || captured.length <= 5) {
+                    onEvent({ type: 'tool-progress', id, line })
+                    lastSent = now
+                  }
+                },
+              })
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err)
+              throw new Error(`docker exec failed: ${message}`)
+            }
+          }
+
+          if (input.cmd === 'foamRun') {
+            // Bounded smoke-test: temporarily cap endTime in controlDict
+            // (foamRun has no -endTime flag; OF13 rejects unknown options).
+            const steps = Math.min(input.steps ?? 5, maxSolverSteps)
+            await withCappedEndTime(caseDir, steps, runIt)
+          } else {
+            await runIt()
           }
 
           const tail = captured.slice(-30).join('\n')
           return {
             cmd: input.cmd,
-            args,
+            ...(input.cmd === 'foamRun' ? { smokeTestSteps: Math.min(input.steps ?? 5, maxSolverSteps) } : {}),
             exitCode,
             ok: exitCode === 0,
             outputTail: tail,
@@ -344,19 +395,18 @@ export function makeTools(opts: MakeToolsOptions) {
 
     finish: tool({
       description:
-        'Call this once you are satisfied the case is correct and runs cleanly. Provide a one-paragraph ' +
-        'summary of what you generated. After this call, the loop ends.',
+        'End the turn and deliver your final message to the user. Call this when the case is ' +
+        'generated and validated, when you have answered a question that needed no file changes, ' +
+        'or when you are blocked and need to explain why. The summary is rendered as Markdown.',
       inputSchema: z.object({
-        summary: z.string().describe('Plain-text summary for the user (1-3 sentences).'),
+        summary: z
+          .string()
+          .describe('Final Markdown message for the user: what you did/found, and what to do next.'),
       }),
       execute: withTracing({
         toolName: 'finish',
         onEvent,
         fn: async (input: { summary: string }) => {
-          const files = listCaseFilesRecursive(caseDir)
-          if (files.length === 0) {
-            throw new Error('cannot finish: no case files have been written yet')
-          }
           onEvent({ type: 'finish', summary: input.summary })
           onFinish?.(input.summary)
           return { done: true, summary: input.summary }

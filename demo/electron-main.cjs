@@ -183,7 +183,9 @@ function waitForServer(maxMs = 30000) {
     function attempt() {
       if (serverFailure) { resolve(false); return }
       if (Date.now() - start > maxMs) { resolve(false); return }
-      const req = http.get(`http://localhost:${PORT}/`, (res) => {
+      // 127.0.0.1, not localhost: the server binds IPv4 loopback only, and
+      // Node may resolve localhost to ::1 first.
+      const req = http.get(`http://127.0.0.1:${PORT}/`, (res) => {
         res.destroy()
         resolve(true)
       })
@@ -254,7 +256,7 @@ app.whenReady().then(async () => {
     return
   }
 
-  await mainWindow.loadURL(`http://localhost:${PORT}`)
+  await mainWindow.loadURL(`http://127.0.0.1:${PORT}`)
 })
 
 app.on('activate', () => {

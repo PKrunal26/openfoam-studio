@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, Check, X, Loader2 } from 'lucide-react'
 import type { AgentStep, AgentToolCall } from '@/store/useChatStore'
+import { Markdown } from '../Markdown'
 
 interface Props {
   steps: AgentStep[]
@@ -108,9 +109,9 @@ export function AgentStepsBlock({ steps, pending, finishSummary }: Props) {
         ))}
       </div>
       {finishSummary && (
-        <p className="mt-2 text-[11px] leading-relaxed text-foreground/85">
-          {finishSummary}
-        </p>
+        <div className="mt-2 text-[11px] leading-relaxed text-foreground/85">
+          <Markdown text={finishSummary} />
+        </div>
       )}
     </div>
   )

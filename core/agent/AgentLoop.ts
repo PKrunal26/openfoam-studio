@@ -36,7 +36,7 @@ export interface RunAgentLoopOptions {
   docker?: Docker | null
   /** Progress sink — called with every step / tool / file event. */
   onEvent: (e: AgentEvent) => void
-  /** Hard cap on agent steps. Default 12. */
+  /** Hard cap on agent steps. Default 16. */
   maxSteps?: number
   /** Optional pin (overrides BYOK config — mainly for tests). */
   provider?: LLMProvider
@@ -112,7 +112,7 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<AgentLoop
     prompt: userText,
     tools,
     toolChoice: 'required',
-    stopWhen: [stepCountIs(opts.maxSteps ?? 12), hasToolCall('finish')],
+    stopWhen: [stepCountIs(opts.maxSteps ?? 16), hasToolCall('finish')],
     ...(opts.signal ? { abortSignal: opts.signal } : {}),
     onStepFinish: ({ text }) => {
       stepIndex++

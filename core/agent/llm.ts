@@ -54,7 +54,7 @@ export async function generateWithLLM(
   const model = opts.model ?? getActiveModel(cfg)
 
   if (provider === 'claude-cli') {
-    const raw = await runClaude(systemPrompt, userPrompt, opts.onDelta)
+    const raw = await runClaude(systemPrompt, userPrompt, opts.onDelta, model)
     // runClaude returns the envelope JSON shape — unwrap `result`
     try {
       const env = JSON.parse(raw) as { is_error?: boolean; result?: string }

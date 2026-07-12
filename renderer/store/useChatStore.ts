@@ -2,11 +2,20 @@ import { create } from 'zustand'
 import { streamGenerate, type GenerateEvent } from '@/lib/sse'
 import { backendUrl } from '@/lib/backendUrl'
 
+export interface PersistedAgentStep {
+  tool: string
+  summary?: string
+  ok: boolean
+  durationMs?: number
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   ts?: string
   filesChanged?: string[]
+  /** Compact tool-call trail from the turn that produced this message. */
+  agentSteps?: PersistedAgentStep[]
 }
 
 export interface AgentToolCall {
@@ -66,6 +75,15 @@ interface ChatState {
   clearHistory: (projectId: string) => Promise<void>
 }
 
+function summarizeCallArgs(tool: string, args: unknown): string | undefined {
+  if (!args || typeof args !== 'object') return undefined
+  const a = args as Record<string, unknown>
+  for (const k of ['path', 'query', 'cmd']) {
+    if (typeof a[k] === 'string' && a[k]) return a[k] as string
+  }
+  return undefined
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   streaming: null,
@@ -115,6 +133,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
           }
           if (e.type === 'file') {
+            if (s.streaming.filesWritten.includes(e.path)) return s
             return {
               streaming: {
                 ...s.streaming,
@@ -187,7 +206,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               },
             }
           }
-          if (e.type === 'finish') {
+          if (e.type === 'finish' || e.type === 'finish-summary') {
             return {
               streaming: { ...s.streaming, finishSummary: e.summary },
             }
@@ -200,18 +219,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (e.type === 'done') {
             // Synthesize the assistant message client-side. Backend persists
             // its own copy with the same shape; mismatches resolve on reload.
+            // Changed files render as chips from `filesChanged` — the text is
+            // just the agent's summary.
             const files = s.streaming.filesWritten
-            const fileList =
-              files.length === 0
-                ? 'No files needed to change.'
-                : `Updated ${files.length} file${files.length === 1 ? '' : 's'}:\n${files.map((f) => `  • ${f}`).join('\n')}`
             const finish = s.streaming.finishSummary?.trim()
-            const summary = finish ? `${finish}\n\n${fileList}` : fileList
+            const summary =
+              finish ||
+              (files.length > 0
+                ? `Updated ${files.length} file${files.length === 1 ? '' : 's'}.`
+                : 'No files needed to change.')
+            const steps: PersistedAgentStep[] = [
+              ...s.streaming.agentSteps.flatMap((st) => st.toolCalls),
+              ...s.streaming.pendingToolCalls,
+            ].map((c) => ({
+              tool: c.tool,
+              summary: summarizeCallArgs(c.tool, c.args),
+              ok: c.status !== 'failed',
+              durationMs: c.durationMs,
+            }))
             const assistantMsg: ChatMessage = {
               role: 'assistant',
               content: summary,
               ts: new Date().toISOString(),
               filesChanged: files,
+              agentSteps: steps.length > 0 ? steps : undefined,
             }
             // Fire callback after settling state.
             queueMicrotask(() => callbacks?.onFilesWritten?.())

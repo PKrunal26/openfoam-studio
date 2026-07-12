@@ -172,10 +172,12 @@ export class FileGenerator {
   async generateFileByFile(
     prompt: string,
     onProgress?: (msg: string) => void,
+    signal?: AbortSignal,
   ): Promise<CaseFiles> {
     const results: CaseFiles = {}
 
     for (const fileKey of REQUIRED_FILE_KEYS) {
+      if (signal?.aborted) throw new Error('generation aborted by client')
       onProgress?.(`Writing ${fileKey}…`)
 
       const userPrompt = [

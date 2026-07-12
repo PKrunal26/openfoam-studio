@@ -70,6 +70,7 @@ export function runClaude(
   systemPrompt: string,
   userPrompt: string,
   onText?: (delta: string) => void,
+  model?: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const streaming = !!onText
@@ -77,6 +78,7 @@ export function runClaude(
       '-p',
       '--output-format', streaming ? 'stream-json' : 'json',
       ...(streaming ? ['--verbose'] : []),
+      ...(model ? ['--model', model] : []),
       '--no-session-persistence',
       '--system-prompt', systemPrompt,
     ]

@@ -1,21 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import * as api from '@/lib/api'
+import { Select } from '@/components/ui/select'
 
 interface Props {
   open: boolean
   onClose: () => void
 }
 
+const CUSTOM_MODEL = '__custom__'
+
+const PROVIDER_HINTS: Record<string, string> = {
+  'claude-cli': 'Uses your local Claude Code login. No key needed here.',
+  anthropic: 'Get a key at console.anthropic.com. Stored locally only.',
+  openai: 'Get a key at platform.openai.com. Stored locally only.',
+  google: 'Get a key at aistudio.google.com. Stored locally only.',
+  'openai-compatible':
+    'Any OpenAI-compatible endpoint: Ollama, LM Studio, OpenRouter, Groq… Key optional for local servers.',
+}
+
 export function SettingsModal({ open, onClose }: Props) {
   const [settings, setSettings] = useState<api.Settings | null>(null)
   const [provider, setProvider] = useState<api.Settings['provider']>('claude-cli')
   const [model, setModel] = useState('')
+  const [customModel, setCustomModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [customBaseURL, setCustomBaseURL] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -25,34 +39,69 @@ export function SettingsModal({ open, onClose }: Props) {
       .then((s) => {
         setSettings(s)
         setProvider(s.provider)
-        setModel(s.model ?? '')
+        const info = s.providers.find((p) => p.id === s.provider)
+        const options = info?.models ?? []
+        const inList = options.some((m) => m.id === s.model)
+        // Model IDs outside the suggestion list are valid (user-typed) —
+        // surface them through the Custom row instead of silently swapping.
+        setModel(options.length === 0 || inList ? s.model ?? '' : CUSTOM_MODEL)
+        setCustomModel(inList ? '' : s.model ?? '')
         setCustomBaseURL(s.customBaseURL ?? '')
         setApiKey('')
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [open])
 
+  // Esc closes; cleanup also cancels a pending saved-flash timer.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+    }
+  }, [open, onClose])
+
   if (!open) return null
 
   const providerInfo = settings?.providers.find((p) => p.id === provider)
   const modelOptions = providerInfo?.models ?? []
   const usesModelDropdown = modelOptions.length > 0
+  const isCustomModel = usesModelDropdown && model === CUSTOM_MODEL
+  const requiresKey = provider !== 'claude-cli' && provider !== 'openai-compatible'
+  const acceptsKey = provider !== 'claude-cli'
+  const hasKey = settings?.hasKeys?.[provider] ?? false
+
+  const effectiveModel = (isCustomModel ? customModel : model).trim()
 
   const onSave = async () => {
-    setSaving(true)
     setError(null)
+    if (requiresKey && !hasKey && !apiKey.trim()) {
+      setError(`${providerInfo?.label ?? provider} needs an API key before it can generate anything.`)
+      return
+    }
+    if (provider === 'openai-compatible' && !customBaseURL.trim()) {
+      setError('Enter the base URL of your OpenAI-compatible endpoint (e.g. http://localhost:11434/v1).')
+      return
+    }
+    if (isCustomModel && !effectiveModel) {
+      setError('Enter a model ID, or pick one from the list.')
+      return
+    }
+    setSaving(true)
     try {
-      const selectedModel = usesModelDropdown && !modelOptions.some((m) => m.id === model)
-        ? providerInfo?.defaultModel
-        : model
       await api.updateSettings({
         provider,
-        model: selectedModel || undefined,
+        model: effectiveModel || undefined,
         apiKey: apiKey || undefined,
         customBaseURL: provider === 'openai-compatible' ? customBaseURL : '',
       })
       setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), 1500)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1500)
       // Refresh display state without revealing key
       const fresh = await api.getSettings()
       setSettings(fresh)
@@ -64,13 +113,13 @@ export function SettingsModal({ open, onClose }: Props) {
     }
   }
 
-  const requiresKey = provider !== 'claude-cli'
-  const hasKey = settings?.hasKeys?.[provider] ?? false
-
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 py-6"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -98,22 +147,24 @@ export function SettingsModal({ open, onClose }: Props) {
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
               Provider
             </span>
-            <select
+            <Select
               value={provider}
-              onChange={(e) => {
-                const nextProvider = e.target.value as api.Settings['provider']
+              onChange={(v) => {
+                const nextProvider = v as api.Settings['provider']
                 const nextInfo = settings?.providers.find((p) => p.id === nextProvider)
                 setProvider(nextProvider)
                 setModel(nextInfo?.defaultModel ?? '')
+                setCustomModel('')
+                setApiKey('')
+                setError(null)
               }}
-              className="h-8 rounded-md border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring"
             >
               {(settings?.providers ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
 
           <label className="grid gap-1">
@@ -121,31 +172,37 @@ export function SettingsModal({ open, onClose }: Props) {
               Model
             </span>
             {usesModelDropdown ? (
-              <select
-                value={modelOptions.some((m) => m.id === model) ? model : providerInfo?.defaultModel ?? ''}
-                onChange={(e) => setModel(e.target.value)}
-                className="h-8 rounded-md border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring"
-              >
+              <Select value={model} onChange={setModel}>
                 {modelOptions.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>
                 ))}
-              </select>
+                <option value={CUSTOM_MODEL}>Custom model ID…</option>
+              </Select>
             ) : (
               <input
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={providerInfo?.defaultModel ?? ''}
+                placeholder={providerInfo?.defaultModel || 'e.g. llama3.1:70b'}
                 className="h-8 rounded-md border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring"
+              />
+            )}
+            {isCustomModel && (
+              <input
+                autoFocus
+                value={customModel}
+                onChange={(e) => setCustomModel(e.target.value)}
+                placeholder="Exact model ID, e.g. claude-sonnet-5"
+                className="mt-1 h-8 rounded-md border bg-background px-2.5 font-mono text-xs outline-none focus:ring-1 focus:ring-ring"
               />
             )}
           </label>
 
-          {requiresKey && (
+          {acceptsKey && (
             <label className="grid gap-1">
               <span className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
-                <span>API key</span>
+                <span>API key{provider === 'openai-compatible' ? ' (optional)' : ''}</span>
                 {hasKey && <span className="lowercase tracking-normal text-emerald-500">stored</span>}
               </span>
               <input
@@ -173,11 +230,7 @@ export function SettingsModal({ open, onClose }: Props) {
             </label>
           )}
 
-          <p className="text-[11px] text-muted-foreground">
-            {provider === 'claude-cli'
-              ? 'Uses your local Claude Code login. No key needed here.'
-              : 'Stored locally only. Never leaves this machine.'}
-          </p>
+          <p className="text-[11px] text-muted-foreground">{PROVIDER_HINTS[provider]}</p>
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t px-4 py-3">

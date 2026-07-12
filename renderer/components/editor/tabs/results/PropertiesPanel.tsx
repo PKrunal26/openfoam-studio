@@ -1,5 +1,5 @@
-import { ChevronDown } from 'lucide-react'
 import { useResultsStore, type PipelineItem } from '@/store/useResultsStore'
+import { Select as SharedSelect } from '@/components/ui/select'
 import { COLORMAPS } from '@/lib/vtk/colormaps'
 import { VECTOR_MAGNITUDE, type ComponentSelector } from '@/lib/vtk/fieldStats'
 import type { FieldInfo } from '@/lib/vtk/resultsData'
@@ -39,8 +39,6 @@ const COLORMAP_GRADIENT: Record<string, string> = {
 
 // ── Shared control styling ───────────────────────────────────────────────────
 
-const selectCls =
-  'ofs-select h-7 w-full min-w-0 cursor-pointer appearance-none rounded-md border border-border/80 bg-background pl-2.5 pr-7 text-xs text-foreground outline-none transition-colors hover:border-border focus:border-ring focus:ring-1 focus:ring-ring/30'
 const numberCls =
   'h-7 w-full min-w-0 rounded-md border border-border/80 bg-background px-2 text-xs tabular-nums text-foreground outline-none transition-colors hover:border-border focus:border-ring focus:ring-1 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-40'
 const cardCls = 'space-y-2 rounded-md border border-border/70 bg-card/40 p-2.5'
@@ -67,12 +65,9 @@ function Select({
   children: React.ReactNode
 }) {
   return (
-    <div className="relative min-w-0 flex-1">
-      <select title={title} className={selectCls} value={value} onChange={(e) => onChange(e.target.value)}>
-        {children}
-      </select>
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-    </div>
+    <SharedSelect value={value} onChange={onChange} title={title} size="sm" className="flex-1">
+      {children}
+    </SharedSelect>
   )
 }
 

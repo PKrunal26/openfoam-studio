@@ -7,6 +7,7 @@ import { useResultsViewer } from '@/hooks/useResultsViewer'
 import { VECTOR_MAGNITUDE, type ComponentSelector } from '@/lib/vtk/fieldStats'
 import type { CameraPreset } from '@/lib/vtk/ResultsEngine'
 import { ViewerErrorBoundary, ViewerUnavailable } from '@/components/ui/ViewerErrorBoundary'
+import { Select } from '@/components/ui/select'
 import { PipelineTree } from './PipelineTree'
 import { PropertiesPanel } from './PropertiesPanel'
 import { TimeTransport } from './TimeTransport'
@@ -126,30 +127,32 @@ function ResultsTabInner() {
           </button>
           {compareEnabled && (
             <>
-              <select
+              <Select
                 title="Compare field (right viewport)"
-                className="h-6 rounded-sm border bg-background px-1 text-[11px] text-foreground"
+                size="sm"
+                className="w-20"
                 value={compareField ?? ''}
-                onChange={(e) => setCompareField(e.target.value || null)}
+                onChange={(v) => setCompareField(v || null)}
               >
                 {viewer.fields.map((f) => (
                   <option key={f.name} value={f.name}>
                     {f.name}
                   </option>
                 ))}
-              </select>
+              </Select>
               {(viewer.fields.find((f) => f.name === compareField)?.numComponents ?? 1) > 1 && (
-                <select
+                <Select
                   title="Compare component"
-                  className="h-6 rounded-sm border bg-background px-1 text-[11px] text-foreground"
+                  size="sm"
+                  className="w-24"
                   value={String(compareComponent)}
-                  onChange={(e) => setCompareField(compareField, Number(e.target.value) as ComponentSelector)}
+                  onChange={(v) => setCompareField(compareField, Number(v) as ComponentSelector)}
                 >
                   <option value={String(VECTOR_MAGNITUDE)}>Magnitude</option>
                   <option value="0">X</option>
                   <option value="1">Y</option>
                   <option value="2">Z</option>
-                </select>
+                </Select>
               )}
             </>
           )}

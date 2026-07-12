@@ -15,9 +15,9 @@
 
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
-import * as os from 'node:os'
 import * as path from 'node:path'
 import { findClaudeBin } from './claude-runner.js'
+import { getActiveModel, readConfig } from '../setup/appConfig.js'
 
 import { AGENT_SYSTEM_PROMPT } from './prompts/agent-system-prompt.js'
 import type { AgentEvent } from './tools.js'
@@ -114,18 +114,16 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     lines.push('')
     lines.push(
       `Work inside the directory ${caseDir}. All file paths you Read/Write/Edit ` +
-        `must be inside this directory. Do not run shell commands — the user will ` +
-        `validate the case via the app's Run button after you're done. When finished, ` +
-        `print a one-paragraph summary of what you generated.`,
+        `must be inside this directory. Do not run shell commands — after you finish, ` +
+        `the app automatically validates the case with blockMesh and a short foamRun ` +
+        `and auto-fixes what it can, so focus on getting the dictionaries right. ` +
+        `When finished, print a short Markdown summary: what you set up (with key ` +
+        `numbers), and any assumptions or caveats. If the request is too ambiguous ` +
+        `to pin down the physics, write NO files and instead reply with 2-3 targeted ` +
+        `questions, each with a proposed default.`,
     )
     return lines.join('\n')
   })()
-
-  // Write the agent system prompt to a temp file. Using --append-system-prompt
-  // would inline-escape it; --append-system-prompt-file is cleaner (and exists
-  // in recent CLI builds). We fall back to inline if the flag is unsupported.
-  const promptFile = path.join(os.tmpdir(), `ofs-agent-prompt-${Date.now()}.txt`)
-  fs.writeFileSync(promptFile, AGENT_SYSTEM_PROMPT, 'utf8')
 
   return new Promise<ClaudeAgentResult>((resolve, reject) => {
     // Pipe the user prompt via stdin (avoids any shell-escaping pitfalls with
@@ -134,10 +132,12 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     // Note: we deliberately do NOT pass --bare. --bare disables the keychain
     // and OAuth auth, which means a user who logged in via `claude /login`
     // (the most common no-API-key path) would be rejected here.
+    const model = getActiveModel(readConfig())
     const args = [
       '--print',
       '--output-format', 'stream-json',
       '--verbose',
+      ...(model ? ['--model', model] : []),
       '--add-dir', caseDir,
       '--append-system-prompt', AGENT_SYSTEM_PROMPT,
       '--permission-mode', 'acceptEdits',
@@ -160,6 +160,9 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     const toolCallToId = new Map<string, string>()
     const toolCallStarted = new Map<string, number>()
     const toolCallNames = new Map<string, string>()
+    // Case-relative path per Write/Edit call so successful results can emit
+    // `file` events — the server uses those to know what changed this turn.
+    const toolCallPaths = new Map<string, string>()
 
     const onAbort = () => {
       try { child.kill('SIGTERM') } catch { /* ignore */ }
@@ -185,11 +188,20 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
             toolCallToId.set(id, id)
             toolCallNames.set(id, ourTool)
             toolCallStarted.set(id, Date.now())
+            const normalised = normaliseToolInput(block.name, block.input, caseDir)
+            if (
+              (ourTool === 'write_case_file' || ourTool === 'edit_case_file') &&
+              normalised && typeof normalised === 'object' &&
+              typeof (normalised as { path?: unknown }).path === 'string'
+            ) {
+              const rel = (normalised as { path: string }).path
+              if (!path.isAbsolute(rel) && !rel.startsWith('..')) toolCallPaths.set(id, rel)
+            }
             onEvent({
               type: 'tool-call',
               id,
               tool: ourTool,
-              args: normaliseToolInput(block.name, block.input, caseDir),
+              args: normalised,
             })
           }
         }
@@ -213,11 +225,15 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
               preview,
               durationMs: Date.now() - startedAt,
             })
-            // If this was a Write or Edit, also emit a `file` event so the
-            // post-loop streamer doesn't have to be the only file source.
+            // Write/Edit success → emit a `file` event; the server tracks these
+            // to report exactly which files changed this turn.
             if (ok && (tool === 'write_case_file' || tool === 'edit_case_file')) {
-              // We don't have the path easily here without re-parsing the
-              // tool_use input we recorded; skip — the post-loop scan picks it up.
+              const rel = toolCallPaths.get(id)
+              if (rel) {
+                let size = 0
+                try { size = fs.statSync(path.join(caseDir, rel)).size } catch { /* deleted or unreadable */ }
+                onEvent({ type: 'file', path: rel, size })
+              }
             }
           }
         }
@@ -253,12 +269,10 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     child.stderr.on('data', (chunk: string) => { stderrBuf += chunk })
 
     child.on('error', (err) => {
-      try { fs.unlinkSync(promptFile) } catch { /* ignore */ }
       reject(new Error(`failed to spawn claude CLI: ${err.message}`))
     })
 
     child.on('close', (code) => {
-      try { fs.unlinkSync(promptFile) } catch { /* ignore */ }
       // Drain any tail.
       if (stdoutBuf.length > 0) {
         stdoutBuf += '\n'

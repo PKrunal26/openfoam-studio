@@ -8,6 +8,15 @@ interface Props {
   onOpenSettings: () => void
 }
 
+const STATUS_DOT: Record<api.ProjectMeta['status'], string> = {
+  idle: 'bg-muted-foreground/50',
+  generating: 'bg-blue-400',
+  running: 'bg-blue-400',
+  ready: 'bg-amber-400',
+  done: 'bg-emerald-500',
+  error: 'bg-destructive',
+}
+
 export function ProjectGrid({ onOpenSettings }: Props) {
   const [projects, setProjects] = useState<api.ProjectMeta[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,6 +24,7 @@ export function ProjectGrid({ onOpenSettings }: Props) {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [prompt, setPrompt] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const refresh = async () => {
     setLoading(true)
@@ -45,8 +55,14 @@ export function ProjectGrid({ onOpenSettings }: Props) {
     }
   }
 
-  const onDelete = async (id: string, displayName: string) => {
-    if (!confirm(`Delete project "${displayName}"? This cannot be undone.`)) return
+  const onDelete = async (id: string) => {
+    // Two-step confirm on the card itself instead of a native dialog.
+    if (confirmDelete !== id) {
+      setConfirmDelete(id)
+      setTimeout(() => setConfirmDelete((v) => (v === id ? null : v)), 3000)
+      return
+    }
+    setConfirmDelete(null)
     try {
       await api.deleteProject(id)
       refresh()
@@ -104,6 +120,7 @@ export function ProjectGrid({ onOpenSettings }: Props) {
                     autoFocus
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') onCreate() }}
                     placeholder="Lid-driven cavity"
                     className="h-8 rounded-md border bg-background px-2.5 text-sm outline-none focus:ring-1 focus:ring-ring"
                   />
@@ -167,19 +184,26 @@ export function ProjectGrid({ onOpenSettings }: Props) {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <h3 className="truncate text-sm font-medium">{p.name}</h3>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+                        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[p.status])} />
                         {new Date(p.createdAt).toLocaleDateString()} · {p.status}
                       </p>
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        onDelete(p.id, p.name)
+                        onDelete(p.id)
                       }}
-                      title="Delete project"
-                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                      title={confirmDelete === p.id ? 'Click again to delete permanently' : 'Delete project'}
+                      className={cn(
+                        'transition-opacity focus-visible:opacity-100',
+                        confirmDelete === p.id
+                          ? 'flex items-center gap-1 rounded border border-destructive/50 bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive opacity-100'
+                          : 'opacity-0 group-hover:opacity-100',
+                      )}
                     >
-                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" />
+                      <Trash2 className={cn('h-3.5 w-3.5', confirmDelete === p.id ? 'text-destructive' : 'text-muted-foreground hover:text-destructive')} />
+                      {confirmDelete === p.id && 'Delete?'}
                     </button>
                   </div>
                   {p.prompt && (

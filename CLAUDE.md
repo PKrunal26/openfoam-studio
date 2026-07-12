@@ -40,7 +40,7 @@ GET  /api/projects/:id                get project meta
 DELETE /api/projects/:id              delete project
 GET  /api/projects/:id/files          list case files → [{relPath}]
 GET  /api/projects/:id/file?path=     read file content
-POST /api/projects/:id/generate       SSE — multi-turn generation (AI SDK agent loop for API-key providers; Claude Code CLI tool-loop for `claude-cli` provider)
+POST /api/projects/:id/generate       SSE — multi-turn generation (AI SDK agent loop for API-key providers; Claude Code CLI tool-loop for `claude-cli`); claude-cli + openai-compatible get a post-generation blockMesh/setFields/foamRun validation loop with auto-diagnosis + applyFixes (demo/server.ts validateGeneratedCase)
 POST /api/projects/:id/run            SSE — Docker: blockMesh, [setFields if setFieldsDict], foamToVTK (mesh), foamRun, foamToVTK (all times → Results tab)
 POST /api/projects/:id/postprocess    SSE — re-run foamToVTK on a solved case (body {fields?: string[]})
 GET  /api/projects/:id/runs           run history (newest first) → RunRecord[]
