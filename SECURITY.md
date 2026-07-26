@@ -4,7 +4,8 @@
 
 Please **do not open a public GitHub issue** for security vulnerabilities.
 
-Report privately by email to **26.krunal@gmail.com** with:
+Report privately through **Security > Report a vulnerability** (GitHub Private Vulnerability
+Reporting) on this repository, and include:
 
 - A description of the issue and its impact
 - Steps to reproduce
@@ -12,9 +13,6 @@ Report privately by email to **26.krunal@gmail.com** with:
 
 You can expect an acknowledgement within a few days. Please give a reasonable window to
 release a fix before any public disclosure.
-
-If you use GitHub, you may also report through **Security > Report a vulnerability** (Private
-Vulnerability Reporting) on the repository.
 
 ## Supported versions
 

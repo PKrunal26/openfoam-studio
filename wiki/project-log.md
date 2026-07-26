@@ -49,7 +49,7 @@ Set up the core architecture for OpenFOAM Studio — an AI-powered desktop app w
 - CFD knowledge base structured into `wiki/solvers/`, `wiki/cases/`, `wiki/errors/`
 
 ### 3. UI Scaffold — Forked t3code
-Forked **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)** → **[PKrunal26/t3code](https://github.com/PKrunal26/t3code)** as the base scaffold for the renderer UI.
+Forked **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)** as the base scaffold for the renderer UI.
 
 **Why t3code:**
 - Already a working agent coding UI with React 19 + Vite + Tailwind CSS 4

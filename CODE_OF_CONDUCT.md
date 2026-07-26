@@ -43,8 +43,9 @@ officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the
-community leaders responsible for enforcement at **26.krunal@gmail.com**. All complaints will be
-reviewed and investigated promptly and fairly.
+community leaders responsible for enforcement by opening a report through **Security > Report a
+vulnerability** (GitHub Private Vulnerability Reporting), which is private to the maintainers.
+All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any
 incident.

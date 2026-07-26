@@ -103,7 +103,7 @@ Shows every shell command the agent runs inside the Docker container, with live 
 
 ## UI Foundation — t3code
 
-The renderer is forked from **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)** (our fork: **PKrunal26/t3code**). It already provides:
+The renderer is forked from **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)**. It already provides:
 
 - React 19 + Vite + Tailwind CSS 4 — the component shell
 - xterm.js — terminal emulation for live solver output (bottom panel)
