@@ -35,7 +35,7 @@ The engineer thinks about physics. The app handles files, containers, errors, an
 
 ## UI Layout — Cursor-style Desktop App
 
-The interface is a three-panel layout built on top of the **t3code harness** (React 19 + Electron + xterm.js + Zustand), with the Claude Code CLI as the agent backend.
+The interface is a purpose-built React 19 + Vite + Electron renderer (Tailwind v4, Zustand, Monaco, vtk.js) talking to a local HTTP + SSE server, with a BYOK LLM provider — or the Claude Code CLI with no key — as the agent backend. See `docs/UI_SPEC.md` for the shipped layout.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -67,10 +67,10 @@ Shows the live OpenFOAM case directory structure. Clicking any file opens it in 
 Reads and displays the selected OpenFOAM dictionary file with syntax highlighting. Engineers can inspect exactly what the agent generated or modified. Edits made here feed back to the agent's context.
 
 **Right — AI Conversation**
-The primary input surface. Engineers describe what they want in plain English. The agent responds in natural language, explains what it is doing, and streams its actions (file edits, solver invocations) as they happen. Powered by Claude Code CLI via the t3code WebSocket transport.
+The primary input surface. Engineers describe what they want in plain English. The agent responds in natural language, explains what it is doing, and streams its actions (file edits, solver invocations) as they happen. Streamed over SSE from the local server.
 
-**Bottom — Terminal**
-Shows every shell command the agent runs inside the Docker container, with live streaming output. Nothing is hidden. Engineers can see `blockMesh`, `icoFoam`, `checkMesh` output exactly as it would appear in a terminal. Powered by xterm.js (already in t3code).
+**Bottom — Command output**
+Shows every command the agent runs inside the Docker container, with live streaming output. Nothing is hidden. Engineers can see `blockMesh`, `foamRun`, `checkMesh` output exactly as it would appear in a terminal. Shipped as the Logs tab plus the Commands sidebar panel rather than a terminal emulator.
 
 ## Design Principles
 
@@ -101,15 +101,19 @@ Shows every shell command the agent runs inside the Docker container, with live 
 - Turbulence modelling (RANS, LES) — incompressible laminar flow first
 - Windows native (Docker Desktop on Windows is supported; native Win32 is not)
 
-## UI Foundation — t3code
+## UI Foundation
 
-The renderer is forked from **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)**. It already provides:
+The renderer is written from scratch for this project. Early planning considered
+forking an existing Electron editor shell (**[pingdotgg/t3code](https://github.com/pingdotgg/t3code)**)
+for its xterm.js terminal, WebSocket transport, and SQLite session store. That
+route was **not taken** — none of its code is in this repo. What shipped instead:
 
-- React 19 + Vite + Tailwind CSS 4 — the component shell
-- xterm.js — terminal emulation for live solver output (bottom panel)
-- WebSocket transport with reconnection state machine — agent streaming
-- Zustand state management — same as our core stack
-- Electron desktop wrapper — native app packaging
-- Effect-based server with SQLite persistence — session history
+- React 19 + Vite + Tailwind CSS 4 + Electron — own component shell (`renderer/`)
+- HTTP + SSE to a local Node server (`demo/server.ts`), not WebSockets
+- Monaco for case files and a Logs tab for command output, not xterm.js
+- Zustand stores in `renderer/store/`
+- Plain files on disk under `demo/projects/<id>/` for session history, no database
+- vtk.js Geometry and Results tabs, isolated behind `renderer/lib/vtk/`
 
-The adaptation work: replace Codex/Claude Code provider with an OpenFOAM simulation provider, add the file tree panel, wire the center viewer to the case directory, and route agent actions through `core/docker/CommandRunner.ts`.
+Agent actions route through `core/docker/CommandRunner.ts`. See `docs/UI_SPEC.md`
+for the current layout and component map.

@@ -7,9 +7,13 @@
 
 Claude handles the entire CFD pipeline through its natural conversation + tool-use loop. No custom multi-agent orchestration. The system prompt defines four roles that Claude follows sequentially within a single conversation thread.
 
-**Provider:** t3code's existing Claude provider (unchanged)  
-**Model:** `claude-sonnet-4-6`  
-**Transport:** WebSocket (t3code's existing transport)
+**Provider:** BYOK via the Vercel AI SDK — Anthropic, OpenAI, Google, or any
+OpenAI-compatible endpoint — with the `claude` CLI as a no-key fallback
+(`core/agent/llm.ts`, `core/setup/appConfig.ts`)  
+**Model:** whatever the active provider is configured with; see `DEFAULT_MODEL`
+in `core/setup/appConfig.ts`  
+**Transport:** HTTP + SSE from the renderer to `demo/server.ts` on
+`127.0.0.1:3456` (`POST /api/projects/:id/generate`)
 
 ---
 
@@ -33,7 +37,7 @@ write_case_file called per file → UI updates live.
 Role 3: RUNNER
 blockMesh → checkMesh → solver
 All via run_docker_command allowlist.
-Terminal streams live output.
+Logs tab streams live output.
     │
     ▼
     ├── EXIT 0 ──► Role resolved. Parse results. Show plot + image.
@@ -50,7 +54,8 @@ Terminal streams live output.
 
 ## System Prompt Structure
 
-Location: `core/agent/systemPrompt.ts`
+Location: `core/agent/prompts/agent-system-prompt.ts` (plus
+`cavity-system-prompt.ts` for the benchmark case)
 
 ```
 [ROLE DEFINITION]
@@ -245,9 +250,13 @@ Patch names (e.g. "movingWall", "fixedWalls", "frontAndBack") are defined in `bl
 
 ## Session Persistence
 
-t3code's SQLite backend persists:
-- Conversation history per session
-- Case directory path
-- Agent status at last checkpoint
+There is no database. Each project is a directory under `demo/projects/<id>/`
+(or `<userData>/projects/<id>/` in the packaged app, via `OFS_CONFIG_DIR`):
 
-On resume, Claude receives the conversation history and can continue from where it left off.
+- `meta.json` — project metadata **and** conversation history
+- `case/` — the generated OpenFOAM case
+- `runs.jsonl`, `runs/<runId>.log` — run records and stored logs
+- `commands.jsonl` — every Docker command executed
+
+On resume the agent receives the stored conversation history and continues from
+where it left off. `DELETE /api/projects/:id/messages` clears the history.

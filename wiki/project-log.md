@@ -48,35 +48,29 @@ Set up the core architecture for OpenFOAM Studio — an AI-powered desktop app w
 - Connected Obsidian to `wiki/` via the `obsidian-mcp` MCP server → Claude can read/write CFD knowledge directly, Obsidian gives graph/browse UI
 - CFD knowledge base structured into `wiki/solvers/`, `wiki/cases/`, `wiki/errors/`
 
-### 3. UI Scaffold — Forked t3code
-Forked **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)** as the base scaffold for the renderer UI.
+### 3. UI Scaffold — evaluated a fork, built our own instead
+Considered forking **[pingdotgg/t3code](https://github.com/pingdotgg/t3code)** as the
+base scaffold for the renderer, for its xterm.js terminal, WebSocket transport with
+reconnection, Zustand state, Electron wrapper, and Effect/SQLite server.
 
-**Why t3code:**
-- Already a working agent coding UI with React 19 + Vite + Tailwind CSS 4
-- Has xterm.js terminal emulation (needed to show solver output)
-- Has a WebSocket transport layer with reconnection state machine
-- Uses Zustand for state (same as our stack)
-- Electron desktop wrapper already wired up
-- Effect-based server with SQLite persistence
-- Provider abstraction (Codex/Claude) — maps cleanly to our OpenFOAM provider model
-- Monorepo with turbo — matches our multi-package needs
+**Not adopted.** The renderer was written from scratch and none of that code is in
+this repo. The Effect/SQLite server and WebSocket transport were more machinery than
+a single-user local app needs, and the OpenFOAM-specific surface (case-file tree,
+parameters editor, VTK results viewer) was most of the UI anyway.
 
-**t3code architecture (for reference):**
-```
-apps/server    → Node.js WebSocket server (Effect runtime, SQLite)
-apps/web       → React UI (sessions, conversations, terminal, diffs)
-apps/desktop   → Electron wrapper
-packages/contracts  → Shared schemas (Effect/Schema)
-packages/shared     → Git, shell, logging utilities
-```
+**What shipped instead:** own React 19 + Vite + Tailwind v4 shell (`renderer/`),
+plain Node HTTP + SSE server (`demo/server.ts`), Monaco for case files, a Logs tab
+for command output instead of xterm.js, and flat files under `demo/projects/<id>/`
+instead of a database. Docs that still described the fork were corrected on
+2026-07-26.
 
 ### 4. Full System Design — Brainstorm Session
 Completed a full brainstorming session defining the end-to-end architecture. Key decisions:
 
-- **UI:** Cursor-style four-panel layout — file tree (react-arborist) left, Monaco Editor center, Claude chat right, xterm.js terminal bottom
-- **Agent:** t3code's existing Claude provider unchanged. 4-role pipeline (Architect → Input Writer → Runner → Reviewer) driven by system prompt + 6 custom tools
+- **UI:** Cursor-style layout — case-file tree left, Monaco Editor center, chat right, command output bottom. (Shipped without react-arborist or xterm.js; see `docs/UI_SPEC.md`.)
+- **Agent:** 4-role pipeline (Architect → Input Writer → Runner → Reviewer) driven by system prompt + custom tools. (Shipped on BYOK providers via the Vercel AI SDK, with the `claude` CLI as a no-key fallback.)
 - **Error recovery:** RCA in chat → fix manifest → user approval → apply fixes → re-run (max 3 loops)
-- **Results:** Residual plot (recharts) inline + ParaView batch PNG; fallback to `paraFoam` in terminal
+- **Results:** Residual plot inline + field visualisation. (Shipped as a hand-rolled SVG chart and an in-app vtk.js Results tab — no recharts, no ParaView dependency.)
 - **Parallel agent docs created:** `docs/ARCHITECTURE.md`, `docs/UI_SPEC.md`, `docs/AGENT_PIPELINE.md`, `docs/TOOLS.md`
 - **Full spec:** `docs/superpowers/specs/2026-04-11-openfoam-studio-design.md`
 
@@ -109,10 +103,9 @@ Run solvers end-to-end in Docker and capture structured results (~3min).
 Validate lid-driven cavity results against the Ghia et al. (1982) benchmark data. This is the physics correctness gate (~8min).
 
 ### UI Integration (Post Stage 4)
-Adapt t3code's renderer as the OpenFOAM Studio UI:
-- Replace Codex/Claude provider with an OpenFOAM simulation provider
+Build the OpenFOAM Studio renderer:
 - Natural language input → simulation config → OpenFOAM case files
-- Terminal panel shows live solver output (reuse xterm.js)
+- Logs tab shows live solver output streamed over SSE
 - Results panel shows residual plots and mesh previews
 - Error recovery loop: FOAM FATAL ERRORs → agent diagnosis → auto-fix → re-run
 

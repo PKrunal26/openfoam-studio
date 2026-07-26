@@ -5,132 +5,104 @@
 
 ## Layout
 
-Four-panel Cursor-style layout. Built on the t3code fork (React 19 + Vite + Tailwind CSS 4 + Electron).
+VS Code-style shell: top bar, activity bar, collapsible sidebar, tabbed editor
+area, and a collapsible AI panel on the right. React 19 + Vite + Tailwind CSS 4 +
+Electron. Panels are resized with `react-resizable-panels`; widths persist in
+`useLayoutStore`.
 
 ```
-┌──────────────┬──────────────────────────┬───────────────────────┐
-│ File Tree    │ Monaco Editor            │ Claude Chat           │
-│ ~200px       │ flex-1                   │ ~380px                │
-│              │                          │                       │
-│ react-       │ Displays selected file   │ t3code chat panel —   │
-│ arborist     │ with syntax highlight.   │ unchanged from fork.  │
-│              │ Editable inline.         │                       │
-│ Updates live │ Opens automatically      │ Streams tool use,     │
-│ as agent     │ when agent writes a      │ RCA, approvals, and   │
-│ writes files │ new file.                │ results inline.       │
-├──────────────┴──────────────────────────┴───────────────────────┤
-│ Terminal — xterm.js                              ~200px height  │
-│ Shows every Docker command run by the agent with live output.   │
-│ Read-only. Scrollable.                                          │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TopBar — project name, run/cancel, settings, health status              │
+├────┬──────────────┬───────────────────────────────┬─────────────────────┤
+│ A  │ Sidebar      │ Editor tabs                   │ AI panel            │
+│ c  │              │                               │                     │
+│ t  │ Files        │ Case file · Parameters ·      │ Chat: plain-English │
+│ i  │ Commands     │ Logs · Geometry · Results     │ prompts, streamed   │
+│ v  │ Runs         │                               │ replies, tool use,  │
+│ i  │              │ Monaco for case files,        │ diagnosis diffs,    │
+│ t  │ (collapsible)│ vtk.js for Geometry/Results   │ files written       │
+│ y  │              │                               │ (collapsible)       │
+└────┴──────────────┴───────────────────────────────┴─────────────────────┘
 ```
 
-## Panel Breakdown
+There is **no IPC layer and no terminal emulator.** The renderer talks to
+`demo/server.ts` over HTTP + SSE on `127.0.0.1:3456` (`renderer/lib/api.ts`,
+`backendUrl.ts`). Command output is rendered by the Logs tab, not xterm.
 
-### Left — File Tree (`renderer/components/FileTree/`)
+## Panel breakdown
 
-**Library:** `react-arborist` (MIT)  
-**Data source:** Watches the active case directory on disk via IPC → `core/session/caseDir`  
-**Behaviour:**
-- Updates in real time as agent writes files (no refresh needed)
-- Click any file → opens in Monaco Editor (center panel)
-- Directories are non-collapsible in v1 (collapse is a nice-to-have)
-- Highlights the most recently written file
+### TopBar (`renderer/components/topbar/TopBar.tsx`)
 
-**State (Zustand):**
-```ts
-caseFiles: FileNode[]       // tree structure
-selectedFile: string | null // path of file open in Monaco
-```
+Project name, Run / Cancel, settings entry, health indicator. Routing is a tiny
+hash router (`renderer/lib/router.ts`): `#/` is the project grid,
+`#/project/<id>` a project.
 
-### Center — Monaco Editor (`renderer/components/Editor/`)
+### ActivityBar (`renderer/components/activity/ActivityBar.tsx`)
 
-**Library:** Monaco Editor (MIT) — same editor as VS Code and Cursor  
-**Language:** OpenFOAM dict files use a custom language config (closest: C++ highlighting as fallback)  
-**Behaviour:**
-- Opens automatically when agent writes a new file (auto-select latest written)
-- Engineer can edit the file inline — edits are saved to disk immediately via `write_case_file` IPC call
-- Read/write. Not read-only.
-- Shows file path in a breadcrumb above the editor
+Sidebar switcher — Files, Commands, Runs — plus direct openers for the
+Parameters, Geometry, and Results tabs and the AI-panel toggle.
 
-**State (Zustand):**
-```ts
-editorContent: string       // current file content
-editorDirty: boolean        // unsaved changes flag
-```
+### Sidebar (`renderer/components/sidebar/`)
 
-### Right — Claude Chat (`renderer/components/Chat/`)
+| Panel | File | Shows |
+|-------|------|-------|
+| Files | `FilesPanel.tsx` | Case tree with `system`/`constant`/`0` pinned and expanded, numeric time-step dirs collapsed into one group; click opens a Monaco tab |
+| Commands | `CommandsPanel.tsx` | Every Docker command run, from `GET /api/projects/:id/commands` |
+| Runs | `RunsPanel.tsx` | Run history from `GET /api/projects/:id/runs`, newest first |
 
-**Source:** t3code chat panel — **unchanged from fork**  
-**Behaviour:**
-- Primary input: engineer types plain-English simulation prompts here
-- Streams Claude's responses including tool use annotations
-- RCA and fix list appear as normal chat messages
-- Approval gate: Claude asks "Shall I proceed?" — engineer types "yes"
-- Residual plot renders inline as a recharts component injected into the chat message
-- Results image (ParaView PNG) renders inline
+### Editor tabs (`renderer/components/editor/`)
 
-### Bottom — Terminal (`renderer/components/Terminal/`)
+`EditorTabs.tsx` hosts one tab per open case file plus four special tabs:
 
-**Library:** xterm.js — **already in t3code, wire to Docker stream**  
-**Data source:** Docker log stream from `run_docker_command` via IPC  
-**Behaviour:**
-- Streams live output of every Docker command the agent runs
-- Read-only (engineer cannot type commands here)
-- Shows command header before each run: `> blockMesh -case /tmp/cavity`
-- Color-coded: green for exit 0, red for non-zero exit
+| Tab | File | Notes |
+|-----|------|-------|
+| Case file | `tabs/CaseFileTab.tsx` | Monaco, editable, saves back to the case dir |
+| Parameters | `tabs/ParametersTab.tsx` | Structured editor for common case values |
+| Logs | `tabs/LogsTab.tsx` | Live SSE run output + `ResidualChart` inline |
+| Geometry | `tabs/GeometryTab.tsx` | vtk.js mesh view |
+| Results | `tabs/results/` | `ResultsTab` + `PipelineTree`, `PropertiesPanel`, `TimeTransport` |
 
-## State Shape (Zustand store)
+`tabs/ResidualChart.tsx` is a hand-rolled SVG chart with a per-field colour map —
+no charting library. All vtk.js use is confined to `renderer/lib/vtk/`; React
+components never import vtk.js directly.
 
-```ts
-interface SimulationStore {
-  // Session
-  sessionId: string
-  caseDir: string
+### AI panel (`renderer/components/ai/`)
 
-  // File tree
-  caseFiles: FileNode[]
-  selectedFile: string | null
+`AIPanel.tsx` + `ChatInput.tsx`, with `Markdown.tsx` for assistant prose. Messages
+render as typed blocks in `ai/blocks/`: `MessageBlock`, `ThinkingBlock`,
+`AgentStepsBlock`, `FilesWrittenBlock`, `DiagnosisDiffBlock`. Generation streams
+from `POST /api/projects/:id/generate` (SSE).
 
-  // Editor
-  editorContent: string
-  editorDirty: boolean
+### Modals
 
-  // Agent
-  agentStatus: 'idle' | 'generating' | 'running' | 'reviewing' | 'done' | 'error'
-  lastWrittenFile: string | null
+`setup/SetupModal.tsx` gates the app whenever health checks fail — Docker daemon,
+OpenFOAM image, Claude CLI, provider auth — with an auto-fix stream.
+`settings/SettingsModal.tsx` is the BYOK provider/model/key editor.
 
-  // Results
-  residuals: { field: string; residuals: number[] }[]
-  resultImageUrl: string | null
-}
-```
+## State (Zustand, `renderer/store/`)
 
-## Component List
+| Store | Owns |
+|-------|------|
+| `useProjectStore` | Active project meta, load/clear |
+| `useEditorStore` | Open tabs, active tab, dirty state, special tabs |
+| `useChatStore` | Message history, streaming flag |
+| `useRunsStore` | Run status, live log lines, residual points, cancel |
+| `useResultsStore` | VTK manifest, time step, field/colormap selection |
+| `useLayoutStore` | Sidebar + AI panel collapse, panel sizes |
 
-| Component | Path | Status | Notes |
-|-----------|------|--------|-------|
-| `AppLayout` | `renderer/components/AppLayout.tsx` | To build | Four-panel grid |
-| `FileTree` | `renderer/components/FileTree/` | To build | react-arborist |
-| `Editor` | `renderer/components/Editor/` | To build | Monaco |
-| `ChatPanel` | (t3code) | Exists | Unchanged |
-| `Terminal` | (t3code) | Exists | Rewire to Docker stream |
-| `ResidualChart` | `renderer/components/ResidualChart.tsx` | To build | recharts line chart |
-| `ResultImage` | `renderer/components/ResultImage.tsx` | To build | Inline PNG display |
+Per-project state is reset on route change so switching projects never leaks the
+previous project's tabs, chat, or run state.
 
-## Libraries to Add
+## Shared UI (`renderer/components/ui/`)
 
-```bash
-# In the t3code renderer package
-npm install react-arborist monaco-editor @monaco-editor/react recharts
-```
+`resizable.tsx` (panel primitives), `select.tsx` (custom listbox — native
+`<select>` popups cannot be themed, so there are zero native selects in the DOM),
+`ViewerErrorBoundary.tsx` (keeps a lost WebGL context from blanking the app).
 
-## IPC Calls (renderer → main → core)
+## Conventions
 
-| IPC Channel | Direction | Purpose |
-|-------------|-----------|---------|
-| `case:listFiles` | renderer → core | Get current file tree |
-| `case:readFile` | renderer → core | Read a file for Monaco |
-| `case:writeFile` | renderer → core | Save inline Monaco edit |
-| `case:watchDir` | renderer → core | Subscribe to file tree changes |
-| `docker:logStream` | core → renderer | Push Docker output to xterm.js |
+- Path alias `@/` → `renderer/`
+- Tailwind v4 CSS-first tokens; style through semantic tokens, not raw colours
+- `lucide-react` for icons
+- Anything the renderer needs from disk goes through the HTTP API — the renderer
+  never touches the filesystem or Docker directly
