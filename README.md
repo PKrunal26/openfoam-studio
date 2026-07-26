@@ -29,6 +29,15 @@ OpenFOAM Studio is a cross-platform desktop application that brings the power of
 
 ---
 
+<img width="2836" height="1862" alt="image" src="https://github.com/user-attachments/assets/98624e5f-b23f-46ad-9169-25d85f3d5d6a" />
+<img width="2836" height="1862" alt="image" src="https://github.com/user-attachments/assets/10d2d2e9-0f62-4b1a-9d4c-b81007f854ae" />
+<img width="2836" height="1862" alt="image" src="https://github.com/user-attachments/assets/4e5223f5-4de4-4cc6-ae62-a39d0785c14b" />
+<img width="2836" height="1862" alt="image" src="https://github.com/user-attachments/assets/d2e62b6e-f9f0-41f9-906a-f7beac4b55a4" />
+<img width="2836" height="1862" alt="image" src="https://github.com/user-attachments/assets/f00cb00f-d957-431c-a4d6-f49a3698b3ed" />
+
+
+
+
 ## Repository Architecture
 
 ```
