@@ -7,6 +7,10 @@ on:
       - 'demo/**'
       - 'core/**'
       - 'renderer/**'
+      # Bundled into the installer, so changes here must trigger a rebuild —
+      # keep this list matching the electron-builder `files` globs.
+      - 'wiki/**'
+      - 'docs/openfoam-v13/**'
       - 'scripts/**'
       - 'package.json'
       - 'package-lock.json'

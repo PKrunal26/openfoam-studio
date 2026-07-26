@@ -35,8 +35,9 @@ Releases: CI builds both installers on push to main (.github/workflows/build-mac
 tag `mac-latest`, build-windows.yml → tag `windows-latest`). Packaged app needs no
 system Node — Electron's own Node runs the pre-bundled demo/server.compiled.js.
 Anything the runtime reads from the repo (wiki/, docs/openfoam-v13/) must be listed in
-electron-builder `files` AND located via `resolveAppRoot()` from core/paths.ts — fixed
-`../..` hops break once esbuild inlines core/** into demo/server.compiled.js.
+electron-builder `files`, located via `resolveAppRoot()` from core/paths.ts (fixed
+`../..` hops break once esbuild inlines core/** into demo/server.compiled.js), AND
+present in both release workflows' `paths:` filters or that platform ships stale content.
 
 ## Key API surface (demo/server.ts)
 GET  /api/projects                    list all projects
