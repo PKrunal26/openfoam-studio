@@ -36,22 +36,44 @@ function scheduleNextTick() {
   }, state.intervalMs)
 }
 
+/**
+ * A probe that never answered is a failed probe, not a non-event.
+ *
+ * Rethrowing here left `health` null forever, and App.tsx only shows the setup
+ * modal for a result with ok:false — so a wedged Docker daemon or a dead
+ * backend dropped the user into the workspace with no warning at all. Report it
+ * as an unhealthy result the setup modal can render instead.
+ */
+function unreachableResult(err: unknown): HealthResult {
+  const detail = err instanceof Error ? err.message : String(err)
+  return {
+    ok: false,
+    checks: [
+      {
+        name: 'docker',
+        label: 'Docker daemon',
+        pass: false,
+        fix: `Health check could not complete (${detail}). Start Docker Desktop, or on Linux: sudo systemctl start docker`,
+        canAutoFix: true,
+      },
+    ],
+  }
+}
+
 export function runHealthCheck(_reason: HealthReason): Promise<HealthResult> {
   if (state.inFlight !== null) return state.inFlight
 
+  const settle = (result: HealthResult) => {
+    state.latest = result
+    state.inFlight = null
+    state.listeners.forEach((l) => l(result))
+    scheduleNextTick()
+    return result
+  }
+
   const promise = getHealth()
-    .then((result) => {
-      state.latest = result
-      state.inFlight = null
-      state.listeners.forEach((l) => l(result))
-      scheduleNextTick()
-      return result
-    })
-    .catch((err) => {
-      state.inFlight = null
-      scheduleNextTick()
-      throw err
-    })
+    .then(settle)
+    .catch((err) => settle(unreachableResult(err)))
 
   state.inFlight = promise
   return promise
@@ -79,4 +101,13 @@ export function subscribeHealth(listener: HealthListener): () => void {
 
 export function getLatestHealth(): HealthResult | null {
   return state.latest
+}
+
+/** Test seam — clears cached state between cases. */
+export function _resetHealthLifecycle(): void {
+  stopHealthLifecycle()
+  state.inFlight = null
+  state.latest = null
+  state.listeners.clear()
+  state.intervalMs = 60_000
 }

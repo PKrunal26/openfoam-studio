@@ -16,9 +16,13 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import FlexSearch from 'flexsearch'
+import { resolveAppRoot } from '../paths.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const REPO_ROOT = path.resolve(__dirname, '../..')
+// Not a fixed number of '..' hops: this module is inlined into
+// demo/server.compiled.js in the packaged app, where those hops would escape
+// the app bundle. See core/paths.ts.
+const REPO_ROOT = resolveAppRoot(__dirname)
 const DOCS_DIR = path.join(REPO_ROOT, 'docs', 'openfoam-v13')
 const WIKI_DIR = path.join(REPO_ROOT, 'wiki')
 

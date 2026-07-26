@@ -37,9 +37,10 @@ renderer/               # Vite + React UI
 demo/server.ts          # Local HTTP server (REST + SSE), serves renderer/dist
 demo/electron-main.cjs  # Electron entry (spawns demo/server.ts)
 tests/                  # Stage-gated end-to-end test suites
-wiki/                   # Markdown knowledge base (no vector DB)
-docker/                 # OpenFOAM container configs
+wiki/                   # Markdown knowledge base (no vector DB), shipped in the app
 docs/                   # Feature specs, TODOs, agent logs
+scripts/                # Build helpers (server bundle, postbuild, docs scraper)
+plans/                  # Design notes kept for reference
 ```
 
 - **Stack:** Electron + Vite + React + TypeScript + Vitest + Zustand  
@@ -51,8 +52,23 @@ docs/                   # Feature specs, TODOs, agent logs
 
 ## Installing (Prebuilt Releases)
 
-Download the latest installer from the [Releases page](https://github.com/PKrunal26/openfoam-studio/releases).
-Docker must be installed and running — the solver executes inside an OpenFOAM container.
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon + Intel, `.dmg`) | [mac-latest](https://github.com/PKrunal26/openfoam-studio/releases/tag/mac-latest) |
+| Windows (x64, `.exe`) | [windows-latest](https://github.com/PKrunal26/openfoam-studio/releases/tag/windows-latest) |
+
+Both tags are rolling builds of `main`, rebuilt by CI on every push. All
+[releases](https://github.com/PKrunal26/openfoam-studio/releases) are listed here.
+
+Nothing else to install: the app bundles its own Node runtime, so there is no
+`npm install` step and no system Node requirement. **Docker must be installed and
+running** — the solver executes inside an OpenFOAM container, and the app's setup
+screen can start Docker and pull the image for you.
+
+You will also need one AI provider: paste an API key in Settings (Anthropic,
+OpenAI, Google, or any OpenAI-compatible endpoint including Ollama and LM Studio),
+or install the [Claude Code CLI](https://github.com/anthropics/claude-code) and
+run `claude login` to use its session with no key.
 
 The binaries are **not code-signed**, so the OS will warn on first launch:
 

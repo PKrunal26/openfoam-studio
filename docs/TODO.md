@@ -8,6 +8,31 @@
 
 ---
 
+## Public release readiness (2026-07-26)
+
+Audit of the "download from GitHub, run with no dependencies" path, verified against
+a real packaged build rather than the configs.
+
+| Item | Status |
+|------|--------|
+| P0 · macOS release artifact — `.github/workflows/build-mac.yml`, arm64 + x64 DMG → tag `mac-latest` | `done` |
+| P0 · Ship `wiki/` + `docs/openfoam-v13/` in packaged builds (electron-builder `files`) | `done` |
+| P0 · `resolveAppRoot()` (`core/paths.ts`) so DocsIndex/Reviewer find the wiki after esbuild inlines core/** | `done` |
+| P0 · Timeouts on Docker health probes + failed probe reported as `ok:false` instead of silence | `done` |
+| P0 · Kill the backend on `app.quit()` (Electron skips `window-all-closed`); adopt an existing :3456 server | `done` |
+| P1 · `docker`/`npm` auto-fix commands spawn bare names — Finder-launched mac app has a minimal PATH | `pending` |
+| P1 · Non-Docker-Desktop socket support (Colima / OrbStack / Rancher / podman, `DOCKER_HOST`) | `pending` |
+| P1 · Top-level try/catch on the HTTP handler; `/health/fix` is unwrapped (unhandled rejection kills the server) | `pending` |
+| P1 · Versioned releases instead of rolling per-platform tags that CI deletes and recreates | `pending` |
+| P2 · Remove empty `main/ipc` stub; Obsidian cruft in `wiki/` (`Untitled.base`, `dashboard.md`) ships in the app | `pending` |
+| P2 · `engines` field in package.json; reconsider `asar:false` (ships readable source, 520 MB bundles) | `pending` |
+
+**Tests:** `npm run test:unit` — 130 unit tests green (adds `tests/unit/paths.test.ts`,
+`tests/unit/health.test.ts`, `tests/unit/renderer/`). Stage 0–5 not re-run: Docker Desktop
+is wedged on the dev machine, and `core/health.ts` changes need a stage0 pass once it is back.
+
+---
+
 ## Feature Backlog (priority order)
 
 | # | Feature | ICE | Status | PRD |
@@ -172,4 +197,6 @@
 
 ---
 
-_Last updated: 2026-06-14 — vtk.js viewers hardened against WebGL context loss (error boundary + proactive detection/recovery, TDD); test:postprocess now 79 green._
+_Last updated: 2026-07-26 — public-release readiness pass: macOS release workflow, wiki shipped
+in packaged builds with bundling-safe path resolution, Docker health-probe timeouts, backend
+lifecycle fixed on quit (TDD, 130 unit tests green). See "Public release readiness" above._

@@ -1,0 +1,89 @@
+name: Build macOS installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demo/**'
+      - 'core/**'
+      - 'renderer/**'
+      - 'wiki/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-mac.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Bundle server
+        run: npm run build:server
+
+      # asar is disabled, so each arch ships an unpacked ~520 MB app bundle.
+      # Build the DMGs one arch at a time and drop the intermediate app dir
+      # after each, or the runner's free space runs out mid-build.
+      - name: Build macOS DMG (arm64)
+        run: |
+          npx electron-builder --mac dmg --arm64 --publish never
+          rm -rf dist/mac-arm64
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Build macOS DMG (x64)
+        run: |
+          npx electron-builder --mac dmg --x64 --publish never
+          rm -rf dist/mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Postbuild cleanup + move to releases/
+        run: node scripts/postbuild.mjs
+
+      - name: Delete old mac-latest release
+        shell: bash
+        run: gh release delete mac-latest --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mac-latest
+          name: macOS (latest build)
+          body: |
+            Built from commit ${{ github.sha }} on ${{ github.ref_name }}
+
+            Not code-signed or notarized. First launch: right-click the app in
+            /Applications and choose **Open**, or clear the quarantine flag:
+
+            ```
+            xattr -dr com.apple.quarantine "/Applications/OpenFOAM Studio.app"
+            ```
+
+            Docker must be installed and running.
+          files: dist/releases/*.dmg
+          fail_on_unmatched_files: true
+          # Leave the "Latest" badge on the Windows release — two rolling
+          # per-platform releases would otherwise take turns claiming it.
+          make_latest: false

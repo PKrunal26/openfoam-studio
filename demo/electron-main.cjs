@@ -9,6 +9,8 @@ const PORT = 3456
 let serverProc = null
 let serverFailure = null
 let mainWindow = null
+/** False when we adopted a backend someone else started — never kill that one. */
+let ownsServer = false
 
 // NOTE: do NOT call app.disableHardwareAcceleration() here. It forces Chromium
 // onto SwiftShader (software GL), which makes the vtk.js Geometry/Results
@@ -147,6 +149,7 @@ function startServer() {
     serverFailure = null
   }
 
+  ownsServer = true
   serverProc = spawn(process.execPath, spawnArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
     cwd: appRoot,
@@ -175,6 +178,43 @@ function startServer() {
     serverFailure = stderr.trim() || `Server exited before the window loaded (code: ${code ?? 'unknown'}, signal: ${signal ?? 'none'}).`
     console.error('[electron] Server exited early:', serverFailure)
   })
+}
+
+/** Single quick probe: is something already serving on PORT? */
+function probeServer(timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const req = http.get(`http://127.0.0.1:${PORT}/`, (res) => {
+      res.destroy()
+      resolve(true)
+    })
+    req.on('error', () => resolve(false))
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(false) })
+  })
+}
+
+/**
+ * Kill the backend we spawned.
+ *
+ * Electron does NOT emit 'window-all-closed' when the app quits via app.quit()
+ * (Cmd-Q, Quit menu, `osascript -e 'quit app ...'`), so hooking only that event
+ * left the server child alive holding port 3456 — the next launch then hit
+ * EADDRINUSE and showed the startup-error screen. Hook quit directly, and make
+ * it idempotent since before-quit/will-quit/window-all-closed can all fire.
+ */
+function stopServer() {
+  if (!serverProc || !ownsServer) return
+  const proc = serverProc
+  serverProc = null
+  try {
+    proc.kill('SIGTERM')
+  } catch { /* already gone */ }
+  // SIGTERM is enough for a plain HTTP server, but never leave the port held:
+  // escalate if the child is still around a moment later.
+  setTimeout(() => {
+    if (proc.exitCode === null && proc.signalCode === null) {
+      try { proc.kill('SIGKILL') } catch { /* already gone */ }
+    }
+  }, 1500)
 }
 
 function waitForServer(maxMs = 30000) {
@@ -245,7 +285,14 @@ app.whenReady().then(async () => {
   // Purge Electron's HTTP cache so rebuilt assets are never served stale.
   await session.defaultSession.clearCache()
 
-  startServer()
+  // A backend may already be listening — an orphan from a previous run, or the
+  // dev server. Adopt it instead of spawning a rival that dies on EADDRINUSE.
+  if (await probeServer()) {
+    console.log(`[electron] Reusing backend already listening on ${PORT}`)
+    ownsServer = false
+  } else {
+    startServer()
+  }
 
   const ready = await waitForServer()
   if (!ready) {
@@ -263,7 +310,11 @@ app.on('activate', () => {
   focusMainWindow()
 })
 
+app.on('before-quit', stopServer)
+app.on('will-quit', stopServer)
+process.on('exit', stopServer)
+
 app.on('window-all-closed', () => {
-  if (serverProc) serverProc.kill()
+  stopServer()
   app.quit()
 })

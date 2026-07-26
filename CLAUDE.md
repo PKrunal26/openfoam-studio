@@ -11,11 +11,10 @@ renderer/               Vite + React + TS frontend (Tailwind v4, shadcn/ui, Zust
 demo/server.ts          HTTP server on port 3456 — REST API + SSE streaming, serves renderer/dist/
 demo/electron-main.cjs  Electron entry point — spawns server.ts as child process
 demo/projects/<id>/     Persistence: meta.json + case/ + runs.jsonl + commands.jsonl + runs/<runId>.log
-core/                   Reusable Node.js modules (AgentLoop, tools, DocsIndex, FileGenerator, CommandRunner, ErrorRecovery, health, llm)
+core/                   Reusable Node.js modules (AgentLoop, tools, DocsIndex, FileGenerator, CommandRunner, ErrorRecovery, health, llm, paths)
 tests/                  Stage-gated, never skip stages
-wiki/                   CFD knowledge base in markdown, no vector DB
+wiki/                   CFD knowledge base in markdown, no vector DB — shipped inside packaged builds
 docs/openfoam-v13/      Optional scraped OpenFOAM 13 user guide (run `npm run scrape:docs` to populate)
-docker/                 OpenFOAM container config
 
 ## Stack
 Electron shell + Vite + React + TypeScript renderer
@@ -32,6 +31,12 @@ Results tab: own legacy-VTK parser + engine in renderer/lib/vtk/ — React compo
 `npm run build:renderer`  Build renderer to renderer/dist/
 `npm run build:mac`     Package macOS app to dist/
 `npm run build:win`     Package Windows app to dist/
+Releases: CI builds both installers on push to main (.github/workflows/build-mac.yml →
+tag `mac-latest`, build-windows.yml → tag `windows-latest`). Packaged app needs no
+system Node — Electron's own Node runs the pre-bundled demo/server.compiled.js.
+Anything the runtime reads from the repo (wiki/, docs/openfoam-v13/) must be listed in
+electron-builder `files` AND located via `resolveAppRoot()` from core/paths.ts — fixed
+`../..` hops break once esbuild inlines core/** into demo/server.compiled.js.
 
 ## Key API surface (demo/server.ts)
 GET  /api/projects                    list all projects
@@ -65,6 +70,7 @@ npm run test:stage4    # Ghia benchmark physics validation (~8 min)
 npm run test:stage5    # Conversation + recovery tests
 npm run test:agent     # Agent tools + DocsIndex unit tests (~1 sec, no LLM)
 npm run test:postprocess # Results-tab VTK parser/surface/series unit tests (~1 sec, no Docker)
+npm run test:unit      # All of tests/unit (agent + postprocess + paths + health + renderer), ~2 sec
 
 ## Stage 0 success definition
 All 5 tests pass:

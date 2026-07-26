@@ -189,8 +189,20 @@ export interface HealthResult {
   checks: HealthCheck[]
 }
 
-export async function getHealth(): Promise<HealthResult> {
-  const res = await fetch(backendUrl('/health'))
+/**
+ * Server-side health probes are capped at ~5s per Docker round trip, so a
+ * healthy backend always answers well inside this. The ceiling exists for the
+ * case where the backend itself is wedged — without it the request stays
+ * pending for the life of the window and the setup modal never renders.
+ */
+const HEALTH_TIMEOUT_MS = 20_000
+
+export async function getHealth(
+  opts: { timeoutMs?: number } = {},
+): Promise<HealthResult> {
+  const res = await fetch(backendUrl('/health'), {
+    signal: AbortSignal.timeout(opts.timeoutMs ?? HEALTH_TIMEOUT_MS),
+  })
   if (!res.ok) throw new Error(`Health check failed: ${res.status}`)
   return res.json()
 }

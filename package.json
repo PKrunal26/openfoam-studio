@@ -22,6 +22,7 @@
     "test:stage5": "vitest run tests/stage5",
     "test:agent": "vitest run tests/unit/agent",
     "test:postprocess": "vitest run tests/unit/postprocess",
+    "test:unit": "vitest run tests/unit",
     "scrape:docs": "tsx scripts/scrape-openfoam-docs.ts"
   },
   "keywords": [
@@ -55,6 +56,8 @@
       "demo/**/*",
       "core/**/*",
       "renderer/dist/**/*",
+      "wiki/**/*",
+      "docs/openfoam-v13/**/*",
       "node_modules/**/*",
       "package.json"
     ],

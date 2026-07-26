@@ -13,6 +13,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { runClaude } from './claude-runner.js'
+import { resolveAppRoot } from '../paths.js'
 import type { CaseFiles } from './types.js'
 
 export type { CaseFiles }
@@ -38,7 +39,9 @@ export type ReviewerOutput = ReviewResult | ReviewFailure
 // ---------------------------------------------------------------------------
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const WIKI_PATH = path.join(__dirname, '../../wiki/errors/common-failures.md')
+// resolveAppRoot, not '../..': this module can be inlined into
+// demo/server.compiled.js, where fixed hops escape the app bundle.
+const WIKI_PATH = path.join(resolveAppRoot(__dirname), 'wiki', 'errors', 'common-failures.md')
 
 let _wikiContent: string | null = null
 function getWikiContent(): string {

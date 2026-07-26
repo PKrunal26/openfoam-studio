@@ -59,6 +59,8 @@ export interface HealthFixResult {
 interface HealthRunnerDeps {
   hasClaudeCli?: () => boolean
   hasAuth?: () => boolean
+  /** Per-call ceiling for each Docker API round trip. See withTimeout below. */
+  dockerTimeoutMs?: number
 }
 
 interface HealthRepairDeps {
@@ -75,6 +77,30 @@ interface PlannedFixStep {
 
 const IMAGE_FILTERS = JSON.stringify({ reference: [OPENFOAM_IMAGE] })
 
+/** Default ceiling for a single Docker API round trip during a health check. */
+const DOCKER_PROBE_TIMEOUT_MS = 5_000
+
+/**
+ * Reject if `promise` has not settled within `ms`.
+ *
+ * Docker Desktop that is installed but still starting, a wedged daemon, or a
+ * daemon listening on a socket this process cannot reach all leave dockerode
+ * calls pending forever — there is no client-side timeout. Health checks must
+ * report "Docker unreachable" instead of never answering, otherwise GET /health
+ * hangs and the setup modal never gets a result to render.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`))
+    }, ms)
+    promise.then(
+      value => { clearTimeout(timer); resolve(value) },
+      err => { clearTimeout(timer); reject(err) },
+    )
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Core function
 // ---------------------------------------------------------------------------
@@ -86,14 +112,15 @@ export async function runHealthChecks(
   const checks: HealthCheck[] = []
   const hasClaudeCli = deps.hasClaudeCli ?? (() => resolveClaudeBin() !== null)
   const hasAuth = deps.hasAuth ?? (() => hasApiKey() || hasClaudeCredentials())
+  const timeoutMs = deps.dockerTimeoutMs ?? DOCKER_PROBE_TIMEOUT_MS
 
   // ── Check 1: Docker daemon ─────────────────────────────────────────────────
   let dockerOk = false
   try {
-    await docker.ping()
+    await withTimeout(Promise.resolve(docker.ping()), timeoutMs, 'docker.ping')
     dockerOk = true
   } catch {
-    // daemon not reachable
+    // daemon not reachable, or reachable but not answering in time
   }
   checks.push({
     name: 'docker',
@@ -109,12 +136,14 @@ export async function runHealthChecks(
   let imageOk = false
   if (dockerOk) {
     try {
-      const images = await docker.listImages({
-        filters: IMAGE_FILTERS,
-      })
+      const images = await withTimeout(
+        Promise.resolve(docker.listImages({ filters: IMAGE_FILTERS })),
+        timeoutMs,
+        'docker.listImages',
+      )
       imageOk = images.length > 0
     } catch {
-      // unexpected error from the daemon
+      // unexpected error from the daemon, or no answer in time
     }
   }
   checks.push({
