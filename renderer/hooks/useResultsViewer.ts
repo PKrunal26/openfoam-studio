@@ -1,10 +1,11 @@
+import { backendFetch } from '@/lib/backendFetch'
 // Orchestration for the Results tab: owns a ResultsEngine instance and a
 // ResultsDataSource, and keeps the engine in sync with useResultsStore. This
 // hook (plus lib/vtk/*) is the only place that touches vtk.js — components
 // stay plain React.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getVtkManifest, vtkFileUrl, type ProjectMeta } from '@/lib/api'
+import { getVtkManifest, vtkFileUrl, type ProjectMeta, type VtkManifest } from '@/lib/api'
 import { streamPostprocess } from '@/lib/sse'
 import { ResultsEngine, syncCameras } from '@/lib/vtk/ResultsEngine'
 import { probePoint } from '@/lib/vtk/probe'
@@ -18,6 +19,8 @@ import { clipCells } from '@/lib/vtk/clip'
 import { extractExternalSurface } from '@/lib/vtk/surfaceExtract'
 import { traceStreamlines, makeLineSeeds } from '@/lib/vtk/streamlines'
 import { sampleVectorGlyphs } from '@/lib/vtk/glyphs'
+import { useRunsStore } from '@/store/useRunsStore'
+import { useProjectStore } from '@/store/useProjectStore'
 import { useResultsStore, type PipelineItem } from '@/store/useResultsStore'
 
 export type Vec3 = [number, number, number]
@@ -70,6 +73,8 @@ export interface ResultsViewer {
   compareContainerRef: (el: HTMLDivElement | null) => void
   engine: ResultsEngine
   status: ViewerStatus
+  provenance: VtkManifest | null
+  reload: () => void
   errorMessage: string | null
   times: number[]
   fields: FieldInfo[]
@@ -124,6 +129,13 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
   const [probe, setProbe] = useState<ProbeResult | null>(null)
 
   const sourceRef = useRef<ResultsDataSource | null>(null)
+  const historicalRunId = useRunsStore((s) => s.viewing === 'historical' ? s.historicalRunId : null)
+  const liveRunId = useRunsStore((s) => s.currentRunId)
+  const liveStatus = useRunsStore((s) => s.status)
+  const [provenance, setProvenance] = useState<VtkManifest | null>(null)
+  const convertHandle = useRef<{ abort: () => void } | null>(null)
+  const lifecycleToken = useRef(0)
+  useEffect(() => { lifecycleToken.current++; setConverting(false); return () => { lifecycleToken.current++; convertHandle.current?.abort() } }, [project?.id])
   const [status, setStatus] = useState<ViewerStatus>('loading')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [times, setTimes] = useState<number[]>([])
@@ -225,12 +237,17 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
     if (!project) return
     let cancelled = false
     setStatus('loading')
+    setProvenance(null)
+    sourceRef.current = null
+    setTimes([]); setFields([]); setBounds(null)
+    syncToken.current++
     ;(async () => {
       try {
-        const manifest = await getVtkManifest(project.id)
+        const manifest = await getVtkManifest(project.id, historicalRunId)
         if (cancelled) return
+        setProvenance(manifest)
         const source = new ResultsDataSource(manifest.series, async (relPath) => {
-          const res = await fetch(vtkFileUrl(project.id, relPath))
+          const res = await backendFetch(vtkFileUrl(project.id, relPath, manifest.runId ?? historicalRunId))
           if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${relPath}`)
           return res.text()
         })
@@ -250,7 +267,7 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
         setTimes(source.times)
         setFields(fieldInfos)
         const patchNames = Object.keys(manifest.series.steps[manifest.series.steps.length - 1]?.patches ?? {})
-        initPipeline(project.id, fieldInfos, patchNames)
+        initPipeline(`${project.id}:${manifest.runId ?? historicalRunId ?? 'current'}`, fieldInfos, patchNames)
         // Default to the last written time — that is the converged solution.
         if (useResultsStore.getState().timeIndex >= source.numSteps) setTimeIndex(source.numSteps - 1)
         else if (useResultsStore.getState().timeIndex === 0 && source.numSteps > 1) setTimeIndex(source.numSteps - 1)
@@ -264,7 +281,7 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
       }
     })()
     return () => { cancelled = true }
-  }, [project, initPipeline, setTimeIndex, dataVersion])
+  }, [project, historicalRunId, liveRunId, liveStatus, initPipeline, setTimeIndex, dataVersion])
 
   // ── Store state → engine sync ──────────────────────────────────────────────
   useEffect(() => {
@@ -441,24 +458,31 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
 
   // ── foamToVTK re-conversion ────────────────────────────────────────────────
   const convert = useCallback(() => {
-    if (!project || converting) return
+    if (!project || converting || historicalRunId || !useProjectStore.getState().executionAllowed) return
+    const token = lifecycleToken.current
+    let terminal = false
     setConverting(true)
     setConvertLog([])
-    streamPostprocess(project.id, {
+    convertHandle.current = streamPostprocess(project.id, {
       onEvent: (e) => {
+        if (token !== lifecycleToken.current) return
+        if (e.type === 'done') terminal = true
         if (e.type === 'log') setConvertLog((log) => [...log.slice(-200), e.line])
         if (e.type === 'error') setErrorMessage(e.message)
       },
       onClose: () => {
+        if (token !== lifecycleToken.current) return
+        if (!terminal) setErrorMessage('Conversion ended without confirmation. Retry after checking the logs.')
         setConverting(false)
         setDataVersion((v) => v + 1) // reload manifest
       },
       onError: (err) => {
+        if (token !== lifecycleToken.current) return
         setConverting(false)
         setErrorMessage(err.message)
       },
     })
-  }, [project, converting])
+  }, [project, converting, historicalRunId])
 
   // ── Derived pipeline items ─────────────────────────────────────────────────
   const addDerivedItem = useCallback(
@@ -554,6 +578,8 @@ export function useResultsViewer(project: ProjectMeta | null): ResultsViewer {
     fields,
     bounds,
     hasTimeSeries: times.length > 1,
+    provenance,
+    reload: () => setDataVersion((v) => v + 1),
     converting,
     convertLog,
     convert,

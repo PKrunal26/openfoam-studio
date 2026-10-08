@@ -1,7 +1,10 @@
+import { backendFetch } from '../lib/backendFetch'
 import { create } from 'zustand'
-import { streamRun, type RunEvent } from '@/lib/sse'
-import * as api from '@/lib/api'
-import { backendUrl } from '@/lib/backendUrl'
+import { streamRun, iterateSSE, type RunEvent } from '../lib/sse'
+import * as api from '../lib/api'
+import { useEditorStore } from './useEditorStore'
+import { useProjectStore } from './useProjectStore'
+import { backendUrl } from '../lib/backendUrl'
 
 export interface FileFix {
   file: string
@@ -102,7 +105,7 @@ function reduceRunEvent(state: typeof initial, e: RunEvent): Partial<typeof init
       ? { residuals: next.slice(-MAX_RESIDUALS) }
       : { residuals: next }
   }
-  if (e.type === 'exit') return { exits: [...state.exits, { cmd: e.cmd, code: e.code }] }
+  if (e.type === 'exit') return { exits: [...state.exits, { cmd: e.cmd, code: e.code }], ...(e.code !== 0 ? { status: 'failed' as const } : {}) }
   if (e.type === 'error') {
     return { errorMessage: e.message, status: state.status === 'running' ? 'failed' : state.status }
   }
@@ -112,81 +115,65 @@ function reduceRunEvent(state: typeof initial, e: RunEvent): Partial<typeof init
   if (e.type === 'exhausted') return { status: 'exhausted' }
   if (e.type === 'unknown-error') return { unknownErrorTail: e.log, status: 'failed' }
   if (e.type === 'done') {
+    if (e.status === 'aborted' || e.status === 'failed' || e.status === 'exhausted') return { status: e.status }
     return state.status === 'running' ? { status: 'success' } : {}
   }
   return {}
 }
+
+let requestToken = 0
+let historyToken = 0
 
 export const useRunsStore = create<RunsState>((set, get) => ({
   ...initial,
 
   startRun: (projectId) => {
     if (get().status === 'running' || get().applying) return
+    const token = ++requestToken
     set({ ...initial, status: 'running', viewing: 'live' })
 
     const handle = streamRun(projectId, {
-      onEvent: (e) => set((s) => reduceRunEvent(s, e)),
-      onError: (err) => set({ status: 'failed', errorMessage: err.message, abort: null }),
-      onClose: () =>
-        set((s) => (s.status === 'running' ? { status: 'aborted', abort: null } : { abort: null })),
+      onEvent: (e) => { if (token === requestToken) set((s) => reduceRunEvent(s, e)) },
+      onError: (err) => { if (token === requestToken) set({ status: 'failed', errorMessage: err.message, abort: null }) },
+      onClose: () => { if (token === requestToken) set((s) => s.status === 'running' ? { status: 'failed', errorMessage: 'Connection ended before the run reported completion. Check the log and retry.', abort: null } : { abort: null }) },
     })
     set({ abort: handle.abort })
   },
 
   cancel: () => {
+    requestToken++
     get().abort?.()
-    set({ status: 'aborted', abort: null })
+    set({ status: 'aborted', applying: false, abort: null })
   },
 
   applyFix: async (projectId, fix) => {
-    if (get().applying) return
-    set({ applying: true, errorMessage: null })
+    if (get().applying || get().status === 'running') return
+    const token = ++requestToken
+    const ctrl = new AbortController()
+    set({ ...initial, applying: true, status: 'running', abort: () => ctrl.abort() })
     try {
-      const res = await fetch(backendUrl(`/api/projects/${projectId}/apply-fix`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fix }),
+      const res = await backendFetch(backendUrl(`/api/projects/${projectId}/apply-fix`), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fix }), signal: ctrl.signal,
       })
-      if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => '')
-        throw new Error(`apply-fix failed: ${res.status} ${txt}`)
+      if (token !== requestToken) return
+      set({ applying: false })
+      for await (const evt of iterateSSE(res)) {
+        if (token !== requestToken) break
+        set((s) => reduceRunEvent(s, evt as RunEvent))
       }
-      // apply-fix responds with a fresh /run-style SSE stream after writing.
-      set({ ...initial, status: 'running', applying: false, viewing: 'live' })
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        let idx: number
-        while ((idx = buffer.indexOf('\n\n')) >= 0) {
-          const frame = buffer.slice(0, idx).trim()
-          buffer = buffer.slice(idx + 2)
-          for (const line of frame.split('\n')) {
-            if (!line.startsWith('data:')) continue
-            try {
-              const evt = JSON.parse(line.slice(5).trim()) as RunEvent
-              set((s) => reduceRunEvent(s, evt))
-            } catch {
-              /* ignore malformed frames */
-            }
-          }
-        }
-      }
-      set((s) => (s.status === 'running' ? { status: 'success', abort: null } : { abort: null }))
+      if (token === requestToken) { void useEditorStore.getState().reloadFiles(projectId); void useProjectStore.getState().refreshFiles() }
+      if (token === requestToken) set((s) => s.status === 'running'
+        ? { status: 'failed', errorMessage: 'Recovery ended before the server confirmed completion. Review files and logs before retrying.', abort: null, applying: false }
+        : { abort: null, applying: false })
     } catch (err) {
-      set({
-        applying: false,
-        status: 'failed',
-        errorMessage: err instanceof Error ? err.message : String(err),
-        abort: null,
-      })
+      if (token !== requestToken) return
+      set({ applying: false, status: ctrl.signal.aborted ? 'aborted' : 'failed', errorMessage: ctrl.signal.aborted ? null : err instanceof Error ? err.message : String(err), abort: null })
     }
   },
 
   viewHistoricalRun: async (projectId, run) => {
+    const token = ++historyToken
     set({
       viewing: 'historical',
       historicalRunId: run.id,
@@ -197,11 +184,13 @@ export const useRunsStore = create<RunsState>((set, get) => ({
     })
     try {
       const text = await api.getRunLog(projectId, run.id)
+      if (token !== historyToken) return
       const lines = text.split('\n')
       // Drop trailing empty line from final '\n'
       if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
       set({ historicalLog: lines, historicalLoading: false })
     } catch (err) {
+      if (token !== historyToken) return
       set({
         historicalLoading: false,
         historicalError: err instanceof Error ? err.message : String(err),
@@ -209,9 +198,11 @@ export const useRunsStore = create<RunsState>((set, get) => ({
     }
   },
 
-  viewLiveRun: () => set({ viewing: 'live' }),
+  viewLiveRun: () => { historyToken++; set({ viewing: 'live' }) },
 
   reset: () => {
+    requestToken++
+    historyToken++
     get().abort?.()
     set({ ...initial })
   },

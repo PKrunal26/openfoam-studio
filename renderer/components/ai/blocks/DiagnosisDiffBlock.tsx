@@ -1,7 +1,7 @@
 import { AlertTriangle, Wrench, Loader2 } from 'lucide-react'
 import { useRunsStore, type DiagnosisResult } from '@/store/useRunsStore'
 import { useProjectStore } from '@/store/useProjectStore'
-import { useEditorStore } from '@/store/useEditorStore'
+import { useEditorStore, isDirty } from '@/store/useEditorStore'
 
 interface Props {
   diagnosis: DiagnosisResult
@@ -10,12 +10,14 @@ interface Props {
 export function DiagnosisDiffBlock({ diagnosis }: Props) {
   const project = useProjectStore((s) => s.project)
   const openCaseFile = useEditorStore((s) => s.openCaseFile)
+  const executionAllowed = useProjectStore((s) => s.executionAllowed)
+  const dirty = useEditorStore((s) => s.tabs.some(isDirty))
   const applying = useRunsStore((s) => s.applying)
   const status = useRunsStore((s) => s.status)
   const applyFix = useRunsStore((s) => s.applyFix)
 
   const onApply = () => {
-    if (!project) return
+    if (!project || dirty || !executionAllowed) return
     applyFix(project.id, diagnosis.fix).catch(() => {})
   }
 
@@ -45,8 +47,8 @@ export function DiagnosisDiffBlock({ diagnosis }: Props) {
             <p className="mt-0.5 text-[11px] text-muted-foreground">{f.description}</p>
             {f.oldValue !== f.newValue && f.oldValue !== 'ADD_UFINAL' && f.oldValue !== 'HALVE_DELTA_T' && (
               <pre className="mt-1 grid gap-0.5 overflow-x-auto rounded-sm bg-muted/30 px-1.5 py-1 font-mono text-[10px]">
-                <span className="text-rose-400">- {f.oldValue.slice(0, 80)}</span>
-                <span className="text-emerald-400">+ {f.newValue.slice(0, 80)}</span>
+                <span className="text-rose-400">- {f.oldValue}</span>
+                <span className="text-emerald-400">+ {f.newValue}</span>
               </pre>
             )}
             {(f.oldValue === 'ADD_UFINAL' || f.oldValue === 'HALVE_DELTA_T') && (
@@ -58,10 +60,12 @@ export function DiagnosisDiffBlock({ diagnosis }: Props) {
         ))}
       </div>
 
+      {dirty && <p className="mt-2 text-[11px] text-amber-500">Save or discard your edits before applying recovery changes.</p>}
+      <p className="mt-2 text-[11px] text-muted-foreground">Review all proposed changes and their physics implications before re-running.</p>
       <div className="mt-2.5 flex items-center justify-end">
         <button
           onClick={onApply}
-          disabled={busy}
+          disabled={busy || dirty || !executionAllowed}
           className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {busy ? (

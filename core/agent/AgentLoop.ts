@@ -43,6 +43,8 @@ export interface RunAgentLoopOptions {
   model?: string
   /** Abort signal from the HTTP request. */
   signal?: AbortSignal
+  timeoutMs?: number
+  readOnly?: boolean
 }
 
 export interface AgentLoopResult {
@@ -61,6 +63,8 @@ export interface AgentLoopResult {
  * (files written, commands run) have already happened via tool execute paths.
  */
 export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<AgentLoopResult> {
+  const signal = AbortSignal.any([opts.signal ?? new AbortController().signal, AbortSignal.timeout(opts.timeoutMs ?? 10 * 60_000)])
+  signal.throwIfAborted()
   const cfg = readConfig()
   const provider = opts.provider ?? getActiveProvider(cfg)
   const model = opts.model ?? getActiveModel(cfg)
@@ -79,6 +83,8 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<AgentLoop
     caseDir: opts.caseDir,
     docker: opts.docker ?? null,
     onEvent: opts.onEvent,
+    signal,
+    readOnly: opts.readOnly ?? false,
     onFinish: (s) => {
       finishSummary = s
     },
@@ -113,7 +119,7 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<AgentLoop
     tools,
     toolChoice: 'required',
     stopWhen: [stepCountIs(opts.maxSteps ?? 16), hasToolCall('finish')],
-    ...(opts.signal ? { abortSignal: opts.signal } : {}),
+    abortSignal: signal,
     onStepFinish: ({ text }) => {
       stepIndex++
       if (text) finalText = text
@@ -143,6 +149,7 @@ export async function runAgentLoop(opts: RunAgentLoopOptions): Promise<AgentLoop
     // intentionally empty — drain
   }
 
+  signal.throwIfAborted()
   if (streamError) {
     throw new Error(streamError)
   }

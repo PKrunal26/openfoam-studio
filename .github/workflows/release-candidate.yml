@@ -1,0 +1,74 @@
+name: Versioned release candidate
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Full 40-character reviewed commit SHA
+        required: true
+        type: string
+      promote:
+        description: Publish this validated candidate as a versioned prerelease
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require immutable commit
+        env:
+          COMMIT: ${{ inputs.commit }}
+        run: '[[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]'
+  validate:
+    needs: pin
+    uses: ./.github/workflows/candidate-validation.yml
+    with:
+      ref: ${{ inputs.commit }}
+    secrets: inherit
+  mac:
+    needs: validate
+    uses: ./.github/workflows/build-mac.yml
+    with:
+      ref: ${{ inputs.commit }}
+  windows:
+    needs: validate
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      ref: ${{ inputs.commit }}
+  promote:
+    if: inputs.promote
+    needs: [validate, mac, windows]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: candidate
+          merge-multiple: true
+      - name: Verify checksums and publish immutable prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ inputs.commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd candidate
+          sha256sum -c SHA256SUMS-mac.txt
+          sha256sum -c SHA256SUMS-windows.txt
+          cd ..
+          VERSION=$(node -p "require('./package.json').version")
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo 'Version already exists; immutable releases cannot be overwritten.'
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$VERSION" >/dev/null 2>&1; then
+            echo 'Version tag already exists; cannot repoint an immutable version.'
+            exit 1
+          fi
+          gh release create "v$VERSION" candidate/* --target "$COMMIT" --title "OpenFOAM Studio $VERSION alpha" --prerelease --notes-file docs/RELEASE_NOTES.md

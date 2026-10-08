@@ -154,6 +154,7 @@ export function Select({
         ref={triggerRef}
         type="button"
         title={title}
+        aria-label={title}
         disabled={disabled}
         role="combobox"
         aria-expanded={open}

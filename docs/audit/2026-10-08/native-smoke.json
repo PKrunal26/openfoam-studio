@@ -1,0 +1,17 @@
+{
+  "platform": "macOS ARM64",
+  "packagedVersion": "1.0.3",
+  "configuration": "disposable",
+  "project": "502128f7",
+  "starterWithoutAI": true,
+  "saveAndRun": true,
+  "solverCompleted": true,
+  "resultsVisible": true,
+  "cleanQuitPortReleased": true,
+  "relaunchPreservedCase": true,
+  "codexReadOnlyExplanationCompleted": true,
+  "clearConversationPreservedInputsAndResults": true,
+  "inputRevision": "c3641c2945f35845da1a3ad56b993c606eb195bcc38ab038ff30b5c0d09b5285",
+  "runId": "b1c9f3c7",
+  "benchmark": "not-run"
+}

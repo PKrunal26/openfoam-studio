@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "kind": "reference-visualization",
+  "title": "Lid-driven cavity reference visualization",
+  "certification": "not-run",
+  "source": "tests/fixtures/vtk",
+  "time": 10,
+  "units": {
+    "U": "m/s",
+    "p": "m\u00b2/s\u00b2"
+  },
+  "warning": "Repository visualization fixtures paired with editable starter inputs. These assets do not certify the current inputs, numerical convergence, or physics accuracy. No solver run was performed to produce this bundled copy.",
+  "assets": [
+    {
+      "path": "VTK/cavity_10.vtk",
+      "sha256": "5d0902624da7ba7ee9047a93cf46a825151f559db37174fa17cbc51f3b9765e3"
+    },
+    {
+      "path": "VTK/fixedWalls/fixedWalls_10.vtk",
+      "sha256": "5ef5fa86aac44ca75aed9e0302e5b23ae92a438df6887ff6954d52e11a0f1997"
+    },
+    {
+      "path": "VTK/movingWall/movingWall_10.vtk",
+      "sha256": "e0255a2c4eecd64b5f52720c860cdfebc2c917290684b0259f74524ced4e3032"
+    }
+  ]
+}

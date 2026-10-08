@@ -234,7 +234,7 @@ describe('Stage 4 — Physics Validation', () => {
   })
 
   // -------------------------------------------------------------------------
-  it('Test 2: Centerline velocity matches Ghia et al. 1982 within 15%', () => {
+  it('Test 2: Centerline velocity matches Ghia et al. 1982 within absolute normalized error 0.15', () => {
     console.log('\n[Test 2] Comparing against Ghia benchmark...')
     expect(centerlinePoints.length, 'Centerline must have data').toBeGreaterThan(0)
 

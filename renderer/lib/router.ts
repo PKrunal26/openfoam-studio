@@ -1,3 +1,4 @@
+import { useEditorStore } from '@/store/useEditorStore'
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -14,7 +15,16 @@ function parseHash(hash: string): Route {
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash))
   useEffect(() => {
-    const onHash = () => setRoute(parseHash(window.location.hash))
+    let acceptedHash = window.location.hash
+    const onHash = () => {
+      const target = window.location.hash
+      history.replaceState(null, '', acceptedHash || '#/')
+      useEditorStore.getState().guard(() => {
+        acceptedHash = target
+        history.replaceState(null, '', target || '#/')
+        setRoute(parseHash(target))
+      })
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])

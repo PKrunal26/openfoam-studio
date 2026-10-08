@@ -46,7 +46,10 @@ FOAM exiting
 
 describe('ErrorRecovery.diagnose', () => {
   it('returns bad BC fix for Unknown patchField type log', () => {
-    const result = diagnose(BAD_BC_LOG)
+    const result = diagnose(BAD_BC_LOG, {
+      '0/U': 'boundaryField { fixedWalls { type fixedGradient; } }',
+      'system/blockMeshDict': 'boundary ( fixedWalls { type wall; faces (); } );',
+    })
     expect(result).not.toBeNull()
     const r = result!
     const fix0 = r.fix[0]!
@@ -59,7 +62,7 @@ describe('ErrorRecovery.diagnose', () => {
   })
 
   it('returns pRef fix for No reference cell found log', () => {
-    const result = diagnose(MISSING_PREF_LOG)
+    const result = diagnose(MISSING_PREF_LOG, { 'system/fvSolution': 'PIMPLE\n{\n    nCorrectors 2;\n}\n' })
     expect(result).not.toBeNull()
     const r = result!
     const fix0 = r.fix[0]!
@@ -70,7 +73,7 @@ describe('ErrorRecovery.diagnose', () => {
   })
 
   it('returns Courant fix when max Courant > 1', () => {
-    const result = diagnose(HIGH_COURANT_LOG)
+    const result = diagnose(HIGH_COURANT_LOG, { 'system/controlDict': 'deltaT 0.005;\n' })
     expect(result).not.toBeNull()
     const r = result!
     const fix0 = r.fix[0]!
@@ -80,17 +83,23 @@ describe('ErrorRecovery.diagnose', () => {
     expect(fix0.description).toContain('deltaT')
   })
 
-  it('returns a create-file fix for missing phaseProperties', () => {
+  it('requires physical phase input rather than inventing phaseProperties', () => {
     const result = diagnose(MISSING_PHASEPROPS_LOG)
-    expect(result).not.toBeNull()
-    const r = result!
-    const fix0 = r.fix[0]!
-    expect(r.errorClass).toBe('missing-phaseproperties')
-    expect(fix0.file).toBe('constant/phaseProperties')
-    // Empty oldValue is the create-file convention (applyFixes authors the file)
-    expect(fix0.oldValue).toBe('')
-    expect(fix0.newValue).toContain('phases')
-    expect(fix0.newValue).toContain('sigma')
+    expect(result?.errorClass).toBe('missing-phaseproperties')
+    expect(result?.fix).toEqual([])
+    expect(result?.description).toContain('surface tension')
+  })
+
+  it('does not turn a scalar-field boundary error into a velocity-wall edit', () => {
+    const result = diagnose(BAD_BC_LOG.replace('field "U"', 'field "p"'), {
+      '0/p': 'boundaryField { outlet { type fixedGradient; } }',
+    })
+    expect(result?.errorClass).toBe('bad-boundary-condition')
+    expect(result?.fix).toEqual([])
+  })
+
+  it('does not guess a velocity-wall condition without mesh patch context', () => {
+    expect(diagnose(BAD_BC_LOG)?.fix).toEqual([])
   })
 
   it('returns null for unknown error log', () => {

@@ -8,7 +8,39 @@
 
 ---
 
-## Public release readiness (2026-07-26)
+## Pull request and merge — 2026-10-08
+
+- `done` · Prepared the completed launch fixes and CLI/setup follow-up for the user-authorized pull request and merge. Automatic PR checks verify units/types/builds/assets; full ordered simulation validation remains mandatory for release candidates. GitHub records the final PR checks, commit and merge status.
+
+## CLI provider choice — 2026-10-08
+
+- `done` · Restore both Codex CLI and Claude Code CLI in Settings; preserve explicit provider/model choices; retain Codex as the unconfigured default.
+- `done` · Verified config/REST/UI persistence and selected-provider connection/recovery routing. Setup instructions no longer masquerade as terminal commands. 281 unit regressions, 15 affected Stage 0 checks, three typechecks and builds passed. Refreshed ARM64 installer integrity and actual mounted payload comparison passed. Live Claude connection failed on this machine; fresh authentication/model access is required. Earlier ordered CFD stage evidence remains recorded separately in the launch report.
+
+## Project lead launch audit — 2026-10-07
+
+### Implementation — Sol agents (finished 2026-10-08)
+
+- `done` · Core/AI and recovery safety; restricted Codex/Sol default; solver-aware validation and Docker lifecycle.
+- `done` · Shared safe editor buffers, Save and run, cancellation/project isolation, guided FTUX, explicit question mode, accessibility and historical results.
+- `done` · Provider/health/configuration, encrypted desktop credentials, durable data/export, build/type/release gates and packaging safeguards.
+- `done` · Lead integration: transactional generation/recovery, authenticated bounded requests, job ownership, immutable run evidence and provenance.
+- `done` · Ordered Stage 0–5: **15 + 11 + 3 + 8 + 3 + 9 = 49 passed**. Final units **274/274**; three typechecks and renderer/server builds passed. Actual Codex production HTTP journeys passed.
+- `done` · Final ARM64 DMG built and verified; actual mounted payload matches reviewed build. Packaged starter → Save and run → archived results, clean quit and relaunch passed in disposable data. Installer/checksum/native evidence recorded in the implementation report.
+- `blocked` · Broad public promotion: needs a reviewed immutable commit, signing/notarization where promised, clean-machine macOS Intel/ARM64 and Windows x64 install/data-preservation proof, advertised-provider fresh-account journeys and five representative user sessions. These are external release gates, not implemented-code failures.
+- Follow-through report: [LAUNCH_IMPLEMENTATION_REPORT.md](LAUNCH_IMPLEMENTATION_REPORT.md). Original audit below is historical evidence of the pre-fix state.
+
+- `done` · Reviewed FTUX, workbench, AI and CFD reliability, security, packaging, and announcement readiness against the current working tree. Report: [LAUNCH_READINESS_REPORT.md](LAUNCH_READINESS_REPORT.md), with 25 prioritized findings, visual evidence, work packages, and release acceptance gates. Existing local changes preserved; no production code changed.
+- Verification: Stage 0 failed (missing OpenFOAM image plus provider-dependent CLI expectation; 8 passed, 2 failed, 5 environment tests blocked). Stages 1–5 stopped. Renderer typecheck and renderer/server builds passed; root `tsc --noEmit` failed. A directory-read request reproduced a backend crash in an isolated audit project. Downstream UI inspection used explicitly labeled visual fixtures, not a successful solver run.
+- `done` · Source fixes and ordered local validation are complete. Publication/artifact and external journey gates remain explicitly open in the implementation report.
+
+## Historical public release readiness (2026-07-26)
+
+### First fixes — 2026-09-15
+
+- Implemented strict localhost Host/Origin checks and removed wildcard CORS, including SSE. Local command-line clients remain supported; per-launch authentication remains follow-up work.
+- Made AI Settings accessible from the setup gate; closing Settings rechecks readiness. Docker repair no longer installs optional Claude CLI packages.
+- Verification: renderer typecheck and server bundle pass. Stage 0 fails because the OpenFOAM image is missing and an existing CLI test assumes the CLI provider regardless of local configuration. Stages 1–5 not run.
 
 Audit of the "download from GitHub, run with no dependencies" path, verified against
 a real packaged build rather than the configs.
@@ -197,6 +229,4 @@ is wedged on the dev machine, and `core/health.ts` changes need a stage0 pass on
 
 ---
 
-_Last updated: 2026-07-26 — public-release readiness pass: macOS release workflow, wiki shipped
-in packaged builds with bundling-safe path resolution, Docker health-probe timeouts, backend
-lifecycle fixed on quit (TDD, 130 unit tests green). See "Public release readiness" above._
+_Last updated: 2026-10-08 — Both CLI choices and setup guidance fixed; 281 units and affected Stage 0 pass. Earlier ordered Stage 0–5 evidence retained separately. See the launch implementation report for current candidate evidence and external promotion gates._

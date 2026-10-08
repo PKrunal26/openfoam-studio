@@ -5,7 +5,7 @@ export type AllowedHostCommandId =
   | 'start_docker_service_linux'
   | 'start_docker_desktop_windows'
   | 'pull_openfoam_source_image'
-  | 'install_claude_cli'
+  | 'install_codex_cli'
 
 export interface AllowedHostCommand {
   id: AllowedHostCommandId
@@ -45,11 +45,11 @@ const ALLOWED_HOST_COMMANDS: Record<AllowedHostCommandId, AllowedHostCommand> = 
     command: 'docker',
     args: ['pull', 'microfluidica/openfoam:13'],
   },
-  install_claude_cli: {
-    id: 'install_claude_cli',
-    label: 'Install Claude CLI',
+  install_codex_cli: {
+    id: 'install_codex_cli',
+    label: 'Install Codex CLI',
     command: 'npm',
-    args: ['install', '-g', '@anthropic-ai/claude-code'],
+    args: ['install', '-g', '@openai/codex'],
   },
 }
 
@@ -68,16 +68,22 @@ export function isCommandOnPath(command: string): boolean {
 
 export async function runAllowedHostCommand(
   id: AllowedHostCommandId,
-  onLine?: (line: string) => void
+  onLine?: (line: string) => void,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<HostCommandResult> {
   const spec = getAllowedHostCommand(id)
 
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(new Error('Setup cancelled')); return }
     const proc = spawn(spec.command, spec.args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     })
 
+    const cancel = () => { proc.kill('SIGKILL'); reject(new Error('Setup cancelled or timed out')) }
+    const timer = setTimeout(cancel, options.timeoutMs ?? 15 * 60_000)
+    options.signal?.addEventListener('abort', cancel, { once: true })
+    const cleanup = () => { clearTimeout(timer); options.signal?.removeEventListener('abort', cancel) }
     let stdout = ''
     let stderr = ''
     let stdoutBuffer = ''
@@ -95,18 +101,19 @@ export async function runAllowedHostCommand(
 
     proc.stdout.on('data', chunk => {
       const text = chunk.toString()
-      stdout += text
+      stdout = (stdout + text).slice(-262_144)
       stdoutBuffer = flushLines(text, stdoutBuffer)
     })
 
     proc.stderr.on('data', chunk => {
       const text = chunk.toString()
-      stderr += text
+      stderr = (stderr + text).slice(-262_144)
       stderrBuffer = flushLines(text, stderrBuffer)
     })
 
-    proc.on('error', err => reject(err))
+    proc.on('error', err => { cleanup(); reject(err) })
     proc.on('close', code => {
+      cleanup()
       if (stdoutBuffer.trim()) onLine?.(stdoutBuffer)
       if (stderrBuffer.trim()) onLine?.(stderrBuffer)
       resolve({

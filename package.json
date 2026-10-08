@@ -23,7 +23,10 @@
     "test:agent": "vitest run tests/unit/agent",
     "test:postprocess": "vitest run tests/unit/postprocess",
     "test:unit": "vitest run tests/unit",
-    "scrape:docs": "tsx scripts/scrape-openfoam-docs.ts"
+    "scrape:docs": "tsx scripts/scrape-openfoam-docs.ts",
+    "typecheck": "npm run typecheck:core && npm run typecheck:server && npm run typecheck:renderer",
+    "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit"
   },
   "keywords": [
     "openfoam",
@@ -59,7 +62,10 @@
       "wiki/**/*",
       "docs/openfoam-v13/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      "!demo/projects/**/*",
+      "!demo/.generated-case/**/*",
+      "!demo/server.ts"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -95,7 +101,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     },
     "directories": {
       "output": "dist"
@@ -144,5 +151,8 @@
     "typescript": "^6.0.2",
     "vite": "^8.0.10",
     "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=22 <23"
   }
 }

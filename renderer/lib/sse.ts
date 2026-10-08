@@ -1,3 +1,4 @@
+import { backendFetch } from './backendFetch'
 import { backendUrl } from './backendUrl'
 
 /**
@@ -11,7 +12,7 @@ export type GenerateEvent =
   | { type: 'status'; message: string }
   | { type: 'thinking'; message: string; elapsed?: number }
   | { type: 'file'; path: string; content?: string }
-  | { type: 'done' }
+  | { type: 'done'; status?: string }
   | { type: 'error'; message: string }
   // Agent loop events — emitted only for AI-SDK-driven multi-turn generation.
   | { type: 'agent-step'; index: number; text?: string }
@@ -32,13 +33,13 @@ export type RunEvent =
   | { type: 'diagnosis'; result: unknown }
   | { type: 'exhausted' }
   | { type: 'unknown-error'; log: string }
-  | { type: 'done' }
+  | { type: 'done'; status?: string }
 
 interface StreamHandle {
   abort: () => void
 }
 
-async function* iterateSSE(res: Response): AsyncGenerator<unknown, void, void> {
+export async function* iterateSSE(res: Response): AsyncGenerator<unknown, void, void> {
   if (!res.ok || !res.body) {
     throw new Error(`SSE request failed: ${res.status} ${res.statusText}`)
   }
@@ -76,17 +77,19 @@ export function streamGenerate(
     onError?: (err: Error) => void
     onClose?: () => void
   },
+  intent?: 'question' | 'edit',
 ): StreamHandle {
   const ctrl = new AbortController()
   ;(async () => {
     try {
-      const res = await fetch(backendUrl(`/api/projects/${projectId}/generate`), {
+      const res = await backendFetch(backendUrl(`/api/projects/${projectId}/generate`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, intent }),
         signal: ctrl.signal,
       })
       for await (const evt of iterateSSE(res)) {
+        if (ctrl.signal.aborted) break
         handlers.onEvent?.(evt as GenerateEvent)
       }
       handlers.onClose?.()
@@ -96,6 +99,7 @@ export function streamGenerate(
         return
       }
       handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+      handlers.onClose?.()
     }
   })()
   return { abort: () => ctrl.abort() }
@@ -105,7 +109,7 @@ export type PostprocessEvent =
   | { type: 'log'; line: string }
   | { type: 'exit'; cmd: string; code: number }
   | { type: 'error'; message: string }
-  | { type: 'done' }
+  | { type: 'done'; status?: string }
 
 /** Re-runs foamToVTK on a solved case so the Results tab has data. */
 export function streamPostprocess(
@@ -120,13 +124,14 @@ export function streamPostprocess(
   const ctrl = new AbortController()
   ;(async () => {
     try {
-      const res = await fetch(backendUrl(`/api/projects/${projectId}/postprocess`), {
+      const res = await backendFetch(backendUrl(`/api/projects/${projectId}/postprocess`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fields ? { fields } : {}),
         signal: ctrl.signal,
       })
       for await (const evt of iterateSSE(res)) {
+        if (ctrl.signal.aborted) break
         handlers.onEvent?.(evt as PostprocessEvent)
       }
       handlers.onClose?.()
@@ -136,6 +141,7 @@ export function streamPostprocess(
         return
       }
       handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+      handlers.onClose?.()
     }
   })()
   return { abort: () => ctrl.abort() }
@@ -152,11 +158,12 @@ export function streamRun(
   const ctrl = new AbortController()
   ;(async () => {
     try {
-      const res = await fetch(backendUrl(`/api/projects/${projectId}/run`), {
+      const res = await backendFetch(backendUrl(`/api/projects/${projectId}/run`), {
         method: 'POST',
         signal: ctrl.signal,
       })
       for await (const evt of iterateSSE(res)) {
+        if (ctrl.signal.aborted) break
         handlers.onEvent?.(evt as RunEvent)
       }
       handlers.onClose?.()
@@ -166,6 +173,7 @@ export function streamRun(
         return
       }
       handlers.onError?.(err instanceof Error ? err : new Error(String(err)))
+      handlers.onClose?.()
     }
   })()
   return { abort: () => ctrl.abort() }

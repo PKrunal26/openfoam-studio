@@ -5,7 +5,7 @@
  * Runs against the real Docker daemon, same as other Stage 0 tests.
  */
 
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import Dockerode from 'dockerode'
 import {
   buildHealthFixPlan,
@@ -14,6 +14,8 @@ import {
   type HealthResult,
 } from '../../core/health.js'
 
+const configured = { config: { llmProvider: 'anthropic' as const }, hasClaudeCli: () => false, hasAuth: () => true }
+
 // ---------------------------------------------------------------------------
 // Happy path
 // ---------------------------------------------------------------------------
@@ -21,7 +23,7 @@ import {
 describe('runHealthChecks — happy path', () => {
   it('returns ok:true with all checks passing in a working environment', async () => {
     const docker = new Dockerode()
-    const result = await runHealthChecks(docker)
+    const result = await runHealthChecks(docker, configured)
 
     expect(result.checks).toHaveLength(4)
     expect(result.checks.find(c => c.name === 'docker')?.pass).toBe(true)
@@ -34,7 +36,7 @@ describe('runHealthChecks — happy path', () => {
   it('responds in under 2 seconds', async () => {
     const docker = new Dockerode()
     const start = Date.now()
-    await runHealthChecks(docker)
+    await runHealthChecks(docker, configured)
     expect(Date.now() - start).toBeLessThan(2000)
   }, 5_000)
 })
@@ -49,7 +51,7 @@ describe('runHealthChecks — Docker unreachable', () => {
     const badDocker = process.platform === 'win32'
       ? new Dockerode({ host: '127.0.0.1', port: 1 })
       : new Dockerode({ socketPath: '/tmp/nonexistent-docker.sock' })
-    const result = await runHealthChecks(badDocker)
+    const result = await runHealthChecks(badDocker, configured)
 
     const dockerCheck = result.checks.find(c => c.name === 'docker')
     const imageCheck = result.checks.find(c => c.name === 'image')
@@ -63,7 +65,7 @@ describe('runHealthChecks — Docker unreachable', () => {
     const badDocker = process.platform === 'win32'
       ? new Dockerode({ host: '127.0.0.1', port: 1 })
       : new Dockerode({ socketPath: '/tmp/nonexistent-docker.sock' })
-    const result = await runHealthChecks(badDocker)
+    const result = await runHealthChecks(badDocker, configured)
 
     const claudeCheck = result.checks.find(c => c.name === 'claude_cli')
     expect(claudeCheck).toBeDefined()
@@ -77,21 +79,13 @@ describe('runHealthChecks — Docker unreachable', () => {
 // ---------------------------------------------------------------------------
 
 describe('runHealthChecks — Claude CLI not in PATH', () => {
-  const originalPath = process.env.PATH
-
-  afterEach(() => {
-    // Always restore PATH — even if the test throws
-    process.env.PATH = originalPath
-  })
-
   it('marks claude_cli as failing when claude is not in PATH', async () => {
-    process.env.PATH = ''
     const docker = new Dockerode()
-    const result = await runHealthChecks(docker)
+    const result = await runHealthChecks(docker, { config: { llmProvider: 'claude-cli' }, hasClaudeCli: () => false, hasAuth: () => false })
 
     const claudeCheck = result.checks.find(c => c.name === 'claude_cli')
     expect(claudeCheck?.pass).toBe(false)
-    expect(claudeCheck?.fix).toContain('claude-code')
+    expect(claudeCheck?.commands).toContain('npm install -g @anthropic-ai/claude-code')
   }, 10_000)
 })
 
@@ -102,7 +96,7 @@ describe('runHealthChecks — Claude CLI not in PATH', () => {
 describe('runHealthChecks — response shape', () => {
   it('every check has name, label, pass, and fix fields', async () => {
     const docker = new Dockerode()
-    const result = await runHealthChecks(docker)
+    const result = await runHealthChecks(docker, configured)
 
     for (const check of result.checks) {
       expect(typeof check.name).toBe('string')
@@ -115,7 +109,7 @@ describe('runHealthChecks — response shape', () => {
 
   it('check names are exactly: docker, image, claude_cli, claude_auth', async () => {
     const docker = new Dockerode()
-    const result = await runHealthChecks(docker)
+    const result = await runHealthChecks(docker, configured)
     const names = result.checks.map(c => c.name)
     expect(names).toEqual(['docker', 'image', 'claude_cli', 'claude_auth'])
   }, 10_000)
@@ -170,7 +164,6 @@ describe('health auto-fix', () => {
     expect(plan).toEqual([
       { check: 'docker', commandId: 'start_docker_desktop_darwin' },
       { check: 'image', commandId: 'pull_openfoam_source_image' },
-      { check: 'claude_cli', commandId: 'install_claude_cli' },
     ])
   })
 
@@ -196,7 +189,6 @@ describe('health auto-fix', () => {
     expect(commands).toEqual([
       'start_docker_desktop_darwin',
       'pull_openfoam_source_image',
-      'install_claude_cli',
     ])
     expect(result.after.ok).toBe(true)
     expect(result.steps.every(step => step.ok)).toBe(true)

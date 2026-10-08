@@ -1,6 +1,7 @@
+import { backendFetch } from '../lib/backendFetch'
 import { create } from 'zustand'
-import { streamGenerate, type GenerateEvent } from '@/lib/sse'
-import { backendUrl } from '@/lib/backendUrl'
+import { streamGenerate, type GenerateEvent } from '../lib/sse'
+import { backendUrl } from '../lib/backendUrl'
 
 export interface PersistedAgentStep {
   tool: string
@@ -64,7 +65,7 @@ interface ChatState {
   sendPrompt: (
     projectId: string,
     prompt: string,
-    callbacks?: { onFilesWritten?: () => void },
+    callbacks?: { onFilesWritten?: () => void; intent?: 'question' | 'edit' },
   ) => void
 
   cancel: () => void
@@ -84,6 +85,8 @@ function summarizeCallArgs(tool: string, args: unknown): string | undefined {
   return undefined
 }
 
+let requestToken = 0
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   streaming: null,
@@ -92,6 +95,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setMessages: (messages) => set({ messages }),
 
   reset: () => {
+    requestToken++
     get().abort?.()
     set({ messages: [], streaming: null, abort: null })
   },
@@ -102,6 +106,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const trimmed = prompt.trim()
     if (!trimmed) return
 
+    const token = ++requestToken
     const userMsg: ChatMessage = { role: 'user', content: trimmed, ts: new Date().toISOString() }
     set((s) => ({
       messages: [...s.messages, userMsg],
@@ -118,6 +123,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const handle = streamGenerate(projectId, trimmed, {
       onEvent: (e: GenerateEvent) => {
+        if (token !== requestToken) return
         set((s) => {
           if (!s.streaming) return s
           if (e.type === 'status') {
@@ -213,7 +219,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
           if (e.type === 'error') {
             return {
-              streaming: { ...s.streaming, error: e.message },
+              messages: [...s.messages, { role: 'assistant', content: `Error: ${e.message}` }],
+              streaming: null, abort: null,
             }
           }
           if (e.type === 'done') {
@@ -224,7 +231,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const files = s.streaming.filesWritten
             const finish = s.streaming.finishSummary?.trim()
             const summary =
-              finish ||
+              (s.streaming.error ? `Error: ${s.streaming.error}` : finish) ||
               (files.length > 0
                 ? `Updated ${files.length} file${files.length === 1 ? '' : 's'}.`
                 : 'No files needed to change.')
@@ -234,7 +241,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ].map((c) => ({
               tool: c.tool,
               summary: summarizeCallArgs(c.tool, c.args),
-              ok: c.status !== 'failed',
+              ok: c.status === 'ok',
               durationMs: c.durationMs,
             }))
             const assistantMsg: ChatMessage = {
@@ -245,7 +252,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               agentSteps: steps.length > 0 ? steps : undefined,
             }
             // Fire callback after settling state.
-            queueMicrotask(() => callbacks?.onFilesWritten?.())
+            queueMicrotask(() => { if (token === requestToken) callbacks?.onFilesWritten?.() })
             return {
               messages: [...s.messages, assistantMsg],
               streaming: null,
@@ -256,11 +263,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         })
       },
       onError: (err) => {
-        set((s) => ({
-          streaming: s.streaming ? { ...s.streaming, error: err.message } : null,
-        }))
+        if (token !== requestToken) return
+        set((s) => ({ messages: [...s.messages, { role: 'assistant', content: `Error: ${err.message}` }], streaming: null, abort: null }))
       },
       onClose: () => {
+        if (token !== requestToken) return
         set((s) => {
           if (!s.streaming) return { abort: null }
           // Stream closed without `done` (network drop or abort). Drop streaming
@@ -273,24 +280,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
             return { messages: [...s.messages, errMsg], streaming: null, abort: null }
           }
-          return { streaming: null, abort: null }
+          return { messages: [...s.messages, { role: 'assistant', content: 'Connection ended before completion. Review files, then retry your request.' }], streaming: null, abort: null }
         })
       },
-    })
+    }, callbacks?.intent)
 
     set({ abort: handle.abort })
   },
 
   cancel: () => {
+    requestToken++
     get().abort?.()
     set({ streaming: null, abort: null })
   },
 
   clearHistory: async (projectId) => {
-    const res = await fetch(backendUrl(`/api/projects/${projectId}/messages`), { method: 'DELETE' })
+    const token = requestToken
+    const res = await backendFetch(backendUrl(`/api/projects/${projectId}/messages`), { method: 'DELETE' })
     if (!res.ok && res.status !== 404) {
       throw new Error(`Failed to clear: ${res.status}`)
     }
-    set({ messages: [], streaming: null })
+    if (token === requestToken) set({ messages: [], streaming: null })
   },
 }))

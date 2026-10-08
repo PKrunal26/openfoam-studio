@@ -1,13 +1,13 @@
 /**
- * Unified LLM client. Dispatches to the user-selected provider via Vercel AI SDK,
- * with a fallback to the existing `claude` CLI for users who already have
- * Claude Code authenticated locally.
+ * Unified LLM client. Dispatches to the selected provider: restricted Codex CLI
+ * by default, an explicitly selected Claude Code CLI, or a configured AI SDK API.
+ * Provider failures never switch to another provider or CLI.
  *
- * All call sites (FileGenerator, claudeDiagnose) go through `generateWithLLM`
+ * Text generation and review call sites go through `generateWithLLM`
  * so the BYOK selection is the only place that knows which provider is active.
  */
 
-import { streamText, generateText } from 'ai'
+import { streamText } from 'ai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -22,6 +22,7 @@ import {
   type LLMProvider,
 } from '../setup/appConfig.js'
 import { runClaude } from './claude-runner.js'
+import { runCodex } from './codex-runner.js'
 
 export interface LLMCallOptions {
   /** Called with each streamed text delta. */
@@ -31,6 +32,8 @@ export interface LLMCallOptions {
   model?: string
   /** Max output tokens. Providers have their own caps; we pass this through. */
   maxOutputTokens?: number
+  signal?: AbortSignal
+  timeoutMs?: number
 }
 
 export interface LLMResult {
@@ -41,20 +44,27 @@ export interface LLMResult {
 
 /**
  * Return the text-only result from an LLM call. For providers wired through
- * Vercel AI SDK we stream tokens; for the claude CLI fallback we emit text
- * deltas as the JSON `result` comes out of the CLI.
+ * Vercel AI SDK we stream tokens. Codex returns schema-checked final text;
+ * Claude Code CLI unwraps its result envelope.
  */
 export async function generateWithLLM(
   systemPrompt: string,
   userPrompt: string,
   opts: LLMCallOptions = {},
 ): Promise<LLMResult> {
+  const signal = AbortSignal.any([opts.signal ?? new AbortController().signal, AbortSignal.timeout(opts.timeoutMs ?? 120_000)])
+  signal.throwIfAborted()
   const cfg = readConfig()
   const provider = opts.provider ?? getActiveProvider(cfg)
   const model = opts.model ?? getActiveModel(cfg)
 
+  if (provider === 'codex-cli') {
+    const text = await runCodex(systemPrompt, userPrompt, opts.onDelta, model, { signal })
+    return { text, provider, model }
+  }
+
   if (provider === 'claude-cli') {
-    const raw = await runClaude(systemPrompt, userPrompt, opts.onDelta, model)
+    const raw = await runClaude(systemPrompt, userPrompt, opts.onDelta, model, { signal })
     // runClaude returns the envelope JSON shape — unwrap `result`
     try {
       const env = JSON.parse(raw) as { is_error?: boolean; result?: string }
@@ -72,6 +82,7 @@ export async function generateWithLLM(
 
   const result = streamText({
     model: languageModel,
+    abortSignal: signal,
     system: systemPrompt,
     prompt: userPrompt,
     ...(opts.maxOutputTokens ? { maxOutputTokens: opts.maxOutputTokens } : {}),
@@ -83,6 +94,7 @@ export async function generateWithLLM(
     }
   }
   const text = await result.text
+  signal.throwIfAborted()
   return { text, provider, model }
 }
 
@@ -133,14 +145,6 @@ export function resolveSdkModel(provider: LLMProvider, model: string, cfg: AppCo
 }
 
 /** One-shot non-streaming variant used for short utilities (e.g. smoke tests). */
-export async function generateOnce(systemPrompt: string, userPrompt: string): Promise<LLMResult> {
-  const cfg = readConfig()
-  const provider = getActiveProvider(cfg)
-  const model = getActiveModel(cfg)
-  if (provider === 'claude-cli') {
-    return generateWithLLM(systemPrompt, userPrompt)
-  }
-  const languageModel = resolveSdkModel(provider, model, cfg)
-  const { text } = await generateText({ model: languageModel, system: systemPrompt, prompt: userPrompt })
-  return { text, provider, model }
+export async function generateOnce(systemPrompt: string, userPrompt: string, options: LLMCallOptions = {}): Promise<LLMResult> {
+  return generateWithLLM(systemPrompt, userPrompt, options)
 }

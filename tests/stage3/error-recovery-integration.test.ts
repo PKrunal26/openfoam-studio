@@ -12,19 +12,19 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import http from 'http'
+import { startBackend, type TestBackend } from '../helpers/backend.js'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const BASE_URL = 'http://localhost:3456'
-const FIXTURE_DIR = path.join(__dirname, '../fixtures/generated/cavity')
+let backend: TestBackend
+const FIXTURE_DIR = path.join(__dirname, '../../demo/starters/cavity')
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
 async function apiPost(path: string, body: unknown = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await backend.request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -33,7 +33,7 @@ async function apiPost(path: string, body: unknown = {}) {
 }
 
 async function apiGet(path: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${BASE_URL}${path}`)
+  const res = await backend.request(path)
   return res.json() as Promise<Record<string, unknown>>
 }
 
@@ -41,7 +41,7 @@ async function collectSSE(path: string, body: unknown = {}): Promise<{ events: u
   const events: unknown[] = []
   let solverOk = false
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await backend.request(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -76,13 +76,14 @@ describe('F05 Error recovery integration', () => {
   let projectId: string
 
   beforeAll(async () => {
+    backend = await startBackend()
     // Create project
     const res = await apiPost('/api/projects', { name: 'error-recovery-test' })
     const meta = await res.json() as Record<string, unknown>
     projectId = meta['id'] as string
 
     // Copy fixture case files into project
-    const caseDir = path.join(__dirname, '../../demo/projects', projectId, 'case')
+    const caseDir = path.join(backend.configDir, 'projects', projectId, 'case')
     fs.mkdirSync(caseDir, { recursive: true })
     const copyDir = (src: string, dst: string) => {
       fs.mkdirSync(dst, { recursive: true })
@@ -95,20 +96,23 @@ describe('F05 Error recovery integration', () => {
     }
     copyDir(FIXTURE_DIR, caseDir)
 
+    const controlFile = path.join(caseDir, 'system', 'controlDict')
+    fs.writeFileSync(controlFile, fs.readFileSync(controlFile, 'utf8').replace(/\bendTime\s+[^;]+;/, 'endTime 0.1;').replace(/\bwriteInterval\s+[^;]+;/, 'writeInterval 10;'))
     // Corrupt 0/U: replace a valid wall patchField type with an invalid one
     const uFile = path.join(caseDir, '0/U')
     const content = fs.readFileSync(uFile, 'utf8')
     const corrupted = content.replace(
       /type\s+noSlip/,
-      'type            fixedGradient'
+      'type            unknownWallType'
     )
     fs.writeFileSync(uFile, corrupted, 'utf8')
   }, 10_000)
 
   afterAll(async () => {
     if (projectId) {
-      await fetch(`${BASE_URL}/api/projects/${projectId}`, { method: 'DELETE' })
+      await backend.request(`/api/projects/${projectId}`, { method: 'DELETE' })
     }
+    await backend?.stop()
   })
 
   it('emits a diagnosis event when foamRun fails with bad BC', async () => {
@@ -127,11 +131,13 @@ describe('F05 Error recovery integration', () => {
 
     // Get diagnosis result — re-run to get it (or we could store it from above test)
     // Apply-fix with the known fix for bad BC
+    const expectedContent = await (await backend.request(`/api/projects/${projectId}/file?path=0%2FU`)).text()
     const fix = [
       {
         file: '0/U',
-        description: 'Replace fixedGradient with noSlip',
-        oldValue: 'type            fixedGradient',
+        description: 'Replace the unsupported stationary wall type with noSlip',
+        expectedContent,
+        oldValue: 'type            unknownWallType',
         newValue: 'type            noSlip',
       },
     ]
@@ -144,6 +150,8 @@ describe('F05 Error recovery integration', () => {
     expect(solverOk).toBe(true)
     const doneEvent = events.find((e: any) => e.type === 'done')
     expect(doneEvent).toBeDefined()
+    const failures = events.filter((event: any) => event.type === 'error' || event.type === 'unknown-error')
+    expect((doneEvent as { status: string }).status, JSON.stringify(failures)).toBe('success')
 
     const updatedMeta = await apiGet(`/api/projects/${projectId}`)
     expect(updatedMeta['retryCount']).toBe(1)

@@ -24,6 +24,7 @@ export interface RunCommand {
 export function buildRunCommands(caseDir: string): RunCommand[] {
   const commands: RunCommand[] = [
     { cmd: 'blockMesh', args: ['-case', CASE] },
+    { cmd: 'checkMesh', args: ['-case', CASE] },
   ]
 
   // VoF / multiphase cases ship a setFieldsDict to initialise fields (e.g. the

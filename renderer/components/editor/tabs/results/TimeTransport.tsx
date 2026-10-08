@@ -52,6 +52,7 @@ export function TimeTransport({ times }: { times: number[] }) {
       </div>
 
       <input
+        aria-label="Saved result time"
         type="range"
         min={0}
         max={Math.max(max, 0)}

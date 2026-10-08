@@ -103,24 +103,25 @@ describe('list_case_files', () => {
 
 describe('edit_case_file', () => {
   beforeEach(() => {
-    fs.writeFileSync(path.join(tmpDir, 'fvSchemes'), 'ddtSchemes\n{\n  default Euler;\n}\n')
+    fs.mkdirSync(path.join(tmpDir, 'system'), { recursive: true })
+    fs.writeFileSync(path.join(tmpDir, 'system', 'fvSchemes'), 'ddtSchemes\n{\n  default Euler;\n}\n')
   })
 
   it('replaces unique text', async () => {
     const result = await exec(tools.edit_case_file, {
-      path: 'fvSchemes',
+      path: 'system/fvSchemes',
       oldText: 'default Euler;',
       newText: 'default backward;',
     })
-    const updated = fs.readFileSync(path.join(tmpDir, 'fvSchemes'), 'utf8')
+    const updated = fs.readFileSync(path.join(tmpDir, 'system', 'fvSchemes'), 'utf8')
     expect(updated).toContain('default backward;')
     expect(updated).not.toContain('default Euler;')
-    expect(result).toMatchObject({ path: 'fvSchemes' })
+    expect(result).toMatchObject({ path: 'system/fvSchemes' })
   })
 
   it('errors when oldText not found', async () => {
     const result = await exec(tools.edit_case_file, {
-      path: 'fvSchemes',
+      path: 'system/fvSchemes',
       oldText: 'this string does not exist',
       newText: 'foo',
     })
@@ -128,9 +129,9 @@ describe('edit_case_file', () => {
   })
 
   it('errors when oldText is not unique', async () => {
-    fs.writeFileSync(path.join(tmpDir, 'dupe'), 'a\na\n')
+    fs.writeFileSync(path.join(tmpDir, 'system', 'dupe'), 'a\na\n')
     const result = await exec(tools.edit_case_file, {
-      path: 'dupe',
+      path: 'system/dupe',
       oldText: 'a',
       newText: 'b',
     })
@@ -168,7 +169,7 @@ describe('run_command', () => {
 
 describe('event tracing', () => {
   it('emits tool-call and tool-result around every execute', async () => {
-    await exec(tools.write_case_file, { path: 'a', content: 'x' })
+    await exec(tools.write_case_file, { path: 'system/a', content: 'x' })
     const calls = events.filter((e) => e.type === 'tool-call')
     const results = events.filter((e) => e.type === 'tool-result')
     expect(calls.length).toBe(1)

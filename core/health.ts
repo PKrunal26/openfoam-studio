@@ -7,8 +7,8 @@
  * Four checks (run sequentially — image check skipped if Docker is down):
  *   1. docker    — Docker daemon is reachable
  *   2. image     — microfluidica/openfoam:13 image is present
- *   3. claude_cli — `claude` binary is in PATH
- *   4. claude_auth — selected provider is configured
+ *   3. selected CLI is installed (optional for API providers)
+ *   4. selected provider is configured
  */
 
 import type Docker from 'dockerode'
@@ -18,21 +18,25 @@ import {
   type AllowedHostCommandId,
   type HostCommandResult,
 } from './setup/HostCommandRunner.js'
+import { resolveCodexBin } from './agent/codex-runner.js'
 import { resolveClaudeBin } from './agent/claude-runner.js'
-import { hasApiKey, hasClaudeCredentials, getActiveProvider, readConfig } from './setup/appConfig.js'
+import { hasLLMAuth, getActiveProvider, readConfig, type AppConfig } from './setup/appConfig.js'
+import { checkCodexAuthentication, checkClaudeAuthentication } from './setup/providerConnection.js'
 import { OPENFOAM_IMAGE } from './docker/CommandRunner.js'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type HealthCheckName = 'docker' | 'image' | 'claude_cli' | 'claude_auth'
+export type HealthCheckName = 'docker' | 'image' | 'codex_cli' | 'codex_auth' | 'claude_cli' | 'claude_auth'
 
 export interface HealthCheck {
   name: HealthCheckName
   label: string
   pass: boolean
   fix: string
+  /** Exact terminal commands, separate from human-readable guidance. */
+  commands?: string[]
   canAutoFix: boolean
 }
 
@@ -57,16 +61,20 @@ export interface HealthFixResult {
 }
 
 interface HealthRunnerDeps {
+  hasCodexCli?: () => boolean
   hasClaudeCli?: () => boolean
-  hasAuth?: () => boolean
+  hasAuth?: () => boolean | Promise<boolean>
+  config?: AppConfig
   /** Per-call ceiling for each Docker API round trip. See withTimeout below. */
   dockerTimeoutMs?: number
 }
 
 interface HealthRepairDeps {
+  signal?: AbortSignal
+  timeoutMs?: number
   platform?: NodeJS.Platform
   checkHealth?: () => Promise<HealthResult>
-  runCommand?: (id: AllowedHostCommandId, onLine?: (line: string) => void) => Promise<HostCommandResult>
+  runCommand?: (id: AllowedHostCommandId, onLine?: (line: string) => void, options?: { signal?: AbortSignal; timeoutMs?: number }) => Promise<HostCommandResult>
   waitForDocker?: () => Promise<boolean>
 }
 
@@ -111,7 +119,9 @@ export async function runHealthChecks(
 ): Promise<HealthResult> {
   const checks: HealthCheck[] = []
   const hasClaudeCli = deps.hasClaudeCli ?? (() => resolveClaudeBin() !== null)
-  const hasAuth = deps.hasAuth ?? (() => hasApiKey() || hasClaudeCredentials())
+  const hasCodexCli = deps.hasCodexCli ?? (() => resolveCodexBin() !== null)
+  const cfg = deps.config ?? readConfig()
+  const hasAuth = deps.hasAuth ?? (() => getActiveProvider(cfg) === 'codex-cli' ? checkCodexAuthentication() : getActiveProvider(cfg) === 'claude-cli' ? checkClaudeAuthentication() : hasLLMAuth(cfg))
   const timeoutMs = deps.dockerTimeoutMs ?? DOCKER_PROBE_TIMEOUT_MS
 
   // ── Check 1: Docker daemon ─────────────────────────────────────────────────
@@ -150,29 +160,32 @@ export async function runHealthChecks(
     name: 'image',
     label: 'OpenFOAM image',
     pass: imageOk,
-    fix: `Run: docker pull ${OPENFOAM_IMAGE}`,
+    fix: `docker pull ${OPENFOAM_IMAGE}`,
+    commands: [`docker pull ${OPENFOAM_IMAGE}`],
     canAutoFix: true,
   })
 
-  // ── Check 3: Claude CLI — only required when the user picks the CLI provider.
-  const activeProvider = getActiveProvider(readConfig())
-  const needsCli = activeProvider === 'claude-cli'
-  const claudeOk = !needsCli || hasClaudeCli()
+  // ── Check 3: Selected CLI — only required when the user picks a CLI provider.
+  const activeProvider = getActiveProvider(cfg)
+  const codex = activeProvider === 'codex-cli'
+  const cliOk = codex ? hasCodexCli() : activeProvider !== 'claude-cli' || hasClaudeCli()
   checks.push({
-    name: 'claude_cli',
-    label: 'Claude CLI',
-    pass: claudeOk,
-    fix: 'Install Claude Code: npm install -g @anthropic-ai/claude-code  then run: claude login',
-    canAutoFix: true,
+    name: codex ? 'codex_cli' : 'claude_cli',
+    label: codex ? 'Codex CLI' : activeProvider === 'claude-cli' ? 'Claude Code CLI' : 'Claude Code CLI (optional for API providers)',
+    pass: cliOk,
+    fix: codex ? 'Install Codex CLI, then sign in.' : 'Install Claude Code CLI, then sign in.',
+    commands: codex ? ['npm install -g @openai/codex', 'codex login'] : ['npm install -g @anthropic-ai/claude-code', 'claude auth login'],
+    canAutoFix: false,
   })
 
-  // ── Check 4: LLM provider auth (BYOK — any configured provider counts). ────
-  const authOk = hasAuth()
+  // ── Check 4: Selected-provider configuration (connection is tested separately). ────
+  const authOk = await hasAuth()
   checks.push({
-    name: 'claude_auth',
+    name: codex ? 'codex_auth' : 'claude_auth',
     label: 'AI provider configured',
     pass: authOk,
-    fix: 'Pick a provider and paste its API key in Settings, or run `claude login` to use the Claude Code CLI.',
+    fix: codex ? 'codex login' : activeProvider === 'claude-cli' ? 'claude auth login' : 'Pick an API provider in Settings and add its key.',
+    commands: codex ? ['codex login'] : activeProvider === 'claude-cli' ? ['claude auth login'] : undefined,
     canAutoFix: false,
   })
 
@@ -205,21 +218,20 @@ function buildHealthFixPlan(result: HealthResult, platform: NodeJS.Platform): Pl
     steps.push({ check: 'image', commandId: 'pull_openfoam_source_image' })
   }
 
-  if (failed.has('claude_cli')) {
-    steps.push({ check: 'claude_cli', commandId: 'install_claude_cli' })
-  }
+  // CLI installation is optional and manual. Repairing Docker must not also
+  // install a global npm package when the user may prefer an API provider.
 
   return steps
 }
 
-async function waitForDockerReady(docker: Docker, timeoutMs = 45_000): Promise<boolean> {
+export async function waitForDockerReady(docker: Docker, timeoutMs = 45_000, signal?: AbortSignal): Promise<boolean> {
   const start = Date.now()
-  while (Date.now() - start < timeoutMs) {
+  while (Date.now() - start < timeoutMs && !signal?.aborted) {
     try {
-      await docker.ping()
-      return true
+      await withTimeout(Promise.resolve(docker.ping()), Math.min(5_000, timeoutMs - (Date.now() - start)), 'docker.ping')
+      return !signal?.aborted
     } catch {
-      await new Promise(resolve => setTimeout(resolve, 1_500))
+      if (!signal?.aborted) await new Promise(resolve => setTimeout(resolve, Math.min(1_500, Math.max(0, timeoutMs - (Date.now() - start)))))
     }
   }
   return false
@@ -229,12 +241,19 @@ export async function repairHealthChecks(
   docker: Docker,
   deps: HealthRepairDeps = {}
 ): Promise<HealthFixResult> {
+  const signal = AbortSignal.any([AbortSignal.timeout(deps.timeoutMs ?? 15 * 60_000), ...(deps.signal ? [deps.signal] : [])])
+  const bounded = <T>(work: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
+    const abort = () => reject(new Error('Setup cancelled or timed out'))
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
   const checkHealth = deps.checkHealth ?? (() => runHealthChecks(docker))
   const runCommand = deps.runCommand ?? runAllowedHostCommand
   const platform = deps.platform ?? process.platform
-  const waitForDocker = deps.waitForDocker ?? (() => waitForDockerReady(docker))
+  const waitForDocker = deps.waitForDocker ?? (() => waitForDockerReady(docker, 45_000, signal))
 
-  const before = await checkHealth()
+  const before = await bounded(checkHealth())
   const plan = buildHealthFixPlan(before, platform)
   const steps: HealthFixStep[] = []
 
@@ -249,6 +268,7 @@ export async function repairHealthChecks(
   let dockerReady = before.checks.find(check => check.name === 'docker')?.pass ?? false
 
   for (const step of plan) {
+    if (signal.aborted) throw new Error('Setup cancelled or timed out')
     if (step.check === 'image' && !dockerReady) {
       steps.push({
         check: 'image',
@@ -262,14 +282,14 @@ export async function repairHealthChecks(
     }
 
     let output = ''
-    const result = await runCommand(step.commandId, line => {
-      output += `${line}\n`
-    })
+    const result = await bounded(runCommand(step.commandId, line => {
+      output = (output + `${line}\n`).slice(-262_144)
+    }, { signal }))
 
     let ok = result.exitCode === 0
 
     if (step.check === 'docker' && ok) {
-      dockerReady = await waitForDocker()
+      dockerReady = await bounded(waitForDocker())
       ok = dockerReady
       if (!dockerReady) {
         output += 'Docker did not become reachable before the timeout.\n'
@@ -290,7 +310,7 @@ export async function repairHealthChecks(
     })
   }
 
-  const after = await checkHealth()
+  const after = await bounded(checkHealth())
   return { before, after, steps }
 }
 
