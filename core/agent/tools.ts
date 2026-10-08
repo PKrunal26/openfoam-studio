@@ -10,7 +10,9 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import type Docker from 'dockerode'
 
-import { runDockerCommand } from '../docker/CommandRunner.js'
+import { runDockerCommand, meshCheckPassed } from '../docker/CommandRunner.js'
+import { safeCasePath, assertSafeDictionary } from '../run/casePolicy.js'
+import { validateCaseInIsolation } from '../run/validateCase.js'
 import { getDocsIndex } from './DocsIndex.js'
 
 /** Public event surface emitted as tools execute. The server forwards these as SSE. */
@@ -29,6 +31,8 @@ export interface MakeToolsOptions {
   docker?: Docker | null
   /** Hard cap on solver smoke-test step count. */
   maxSolverSteps?: number
+  signal?: AbortSignal
+  readOnly?: boolean
   /** Emit a streaming progress / result event. */
   onEvent: (e: AgentEvent) => void
   /** Set by AgentLoop when finish is called. AgentLoop also enforces the stop. */
@@ -36,17 +40,8 @@ export interface MakeToolsOptions {
 }
 
 const MAX_SOLVER_STEPS_DEFAULT = 50
-const ALLOWED_RUN_COMMANDS = new Set(['blockMesh', 'checkMesh', 'foamRun'])
-const REQUIRED_SOLVER_FILES = [
-  '0/U',
-  '0/p',
-  'constant/physicalProperties',
-  'constant/momentumTransport',
-  'system/blockMeshDict',
-  'system/controlDict',
-  'system/fvSchemes',
-  'system/fvSolution',
-]
+const ALLOWED_RUN_COMMANDS = new Set(['blockMesh', 'checkMesh', 'setFields', 'foamRun'])
+
 
 let _toolCallSeq = 0
 function nextToolCallId(): string {
@@ -63,9 +58,16 @@ function safeJoin(caseDir: string, rel: string): string {
   if (path.isAbsolute(rel)) throw new Error('path must be relative to case/')
   const normalised = rel.replace(/\\/g, '/').replace(/^\/+/, '')
   const abs = path.resolve(caseDir, normalised)
-  const guard = path.resolve(caseDir) + path.sep
+  const guard = path.join(path.resolve(caseDir), path.sep)
   if (abs !== path.resolve(caseDir) && !abs.startsWith(guard)) {
     throw new Error(`path escapes case directory: ${rel}`)
+  }
+  let current = path.resolve(caseDir)
+  if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) throw new Error('Case root cannot be a link')
+  for (const part of path.relative(current, abs).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part)
+    try { if (fs.lstatSync(current).isSymbolicLink()) throw new Error('Symbolic links are not permitted') }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
   }
   return abs
 }
@@ -138,6 +140,14 @@ export async function withCappedEndTime<T>(
   }
 }
 
+/** A tool transport completing is not evidence that its domain operation succeeded. */
+export function toolResultSucceeded(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return true
+  const value = result as Record<string, unknown>
+  return value['ok'] !== false && !value['error'] &&
+    (typeof value['exitCode'] !== 'number' || value['exitCode'] === 0)
+}
+
 /**
  * Wrap a tool `execute` so call/result events are emitted automatically and
  * errors are caught and reported as `ok: false` results (the AI SDK then
@@ -146,6 +156,7 @@ export async function withCappedEndTime<T>(
 function withTracing<TInput, TOutput>(opts: {
   toolName: string
   onEvent: (e: AgentEvent) => void
+  signal?: AbortSignal | undefined
   fn: (input: TInput, id: string) => Promise<TOutput>
 }): (input: TInput) => Promise<TOutput | { error: string }> {
   return async (input: TInput) => {
@@ -153,12 +164,14 @@ function withTracing<TInput, TOutput>(opts: {
     const started = Date.now()
     opts.onEvent({ type: 'tool-call', id, tool: opts.toolName, args: input })
     try {
+      opts.signal?.throwIfAborted()
       const result = await opts.fn(input, id)
+      opts.signal?.throwIfAborted()
       opts.onEvent({
         type: 'tool-result',
         id,
         tool: opts.toolName,
-        ok: true,
+        ok: toolResultSucceeded(result),
         preview: preview(typeof result === 'string' ? result : JSON.stringify(result)),
         durationMs: Date.now() - started,
       })
@@ -182,7 +195,7 @@ export function makeTools(opts: MakeToolsOptions) {
   const { caseDir, docker, onEvent, onFinish } = opts
   const maxSolverSteps = opts.maxSolverSteps ?? MAX_SOLVER_STEPS_DEFAULT
 
-  return {
+  const tools = {
     list_case_files: tool({
       description:
         'List every file currently in the project case directory. Returns relative paths under case/.',
@@ -190,6 +203,7 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'list_case_files',
         onEvent,
+        signal: opts.signal,
         fn: async () => {
           return { files: listCaseFilesRecursive(caseDir) }
         },
@@ -204,9 +218,12 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'read_case_file',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { path: string }) => {
           const abs = safeJoin(caseDir, input.path)
           if (!fs.existsSync(abs)) throw new Error(`file does not exist: ${input.path}`)
+          const stat = fs.statSync(abs)
+          if (!stat.isFile() || stat.size > 8 * 1024 * 1024) throw new Error('Not a bounded regular case file')
           const content = fs.readFileSync(abs, 'utf8')
           return { path: input.path, content }
         },
@@ -225,8 +242,11 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'write_case_file',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { path: string; content: string }) => {
-          const abs = safeJoin(caseDir, input.path)
+          if (opts.readOnly) throw new Error('This question is read-only')
+          const abs = safeCasePath(caseDir, input.path)
+          assertSafeDictionary(input.content, input.path)
           fs.mkdirSync(path.dirname(abs), { recursive: true })
           const normalised = input.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
           fs.writeFileSync(abs, normalised, 'utf8')
@@ -248,8 +268,11 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'edit_case_file',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { path: string; oldText: string; newText: string }) => {
-          const abs = safeJoin(caseDir, input.path)
+          if (opts.readOnly) throw new Error('This question is read-only')
+          if (!input.oldText) throw new Error('oldText must not be empty')
+          const abs = safeCasePath(caseDir, input.path)
           if (!fs.existsSync(abs)) throw new Error(`file does not exist: ${input.path}`)
           const original = fs.readFileSync(abs, 'utf8')
           const occurrences = original.split(input.oldText).length - 1
@@ -260,7 +283,8 @@ export function makeTools(opts: MakeToolsOptions) {
             )
           }
           const updated = original.replace(input.oldText, input.newText).replace(/\r\n/g, '\n')
-          fs.writeFileSync(abs, updated, 'utf8')
+          assertSafeDictionary(updated, input.path)
+          fs.writeFileSync(abs, updated.replace(/\r/g, '\n'), 'utf8')
           onEvent({ type: 'file', path: input.path, size: Buffer.byteLength(updated, 'utf8') })
           return { path: input.path, bytesWritten: Buffer.byteLength(updated, 'utf8') }
         },
@@ -281,6 +305,7 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'search_docs',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { query: string; k?: number }) => {
           const idx = getDocsIndex()
           const hits = idx.search(input.query, input.k ?? 5).map((h) => ({
@@ -304,6 +329,7 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'read_doc',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { path: string }) => {
           const idx = getDocsIndex()
           const content = idx.read(input.path)
@@ -313,13 +339,13 @@ export function makeTools(opts: MakeToolsOptions) {
       }),
     }),
 
-    run_command: tool<{ cmd: 'blockMesh' | 'checkMesh' | 'foamRun'; steps?: number }, unknown>({
+    run_command: tool<{ cmd: 'blockMesh' | 'checkMesh' | 'setFields' | 'foamRun'; steps?: number }, unknown>({
       description:
         'Run an OpenFOAM command inside the project case directory. ' +
-        'Allowed commands: blockMesh, checkMesh, foamRun. ' +
+        'Allowed commands: blockMesh, checkMesh, setFields, foamRun. ' +
         'foamRun is auto-capped at a small step count for smoke-testing — use it to verify the case actually solves.',
       inputSchema: z.object({
-        cmd: z.enum(['blockMesh', 'checkMesh', 'foamRun']),
+        cmd: z.enum(['blockMesh', 'checkMesh', 'setFields', 'foamRun']),
         steps: z
           .number()
           .int()
@@ -331,16 +357,12 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'run_command',
         onEvent,
-        fn: async (input: { cmd: 'blockMesh' | 'checkMesh' | 'foamRun'; steps?: number }, id) => {
+        signal: opts.signal,
+        fn: async (input: { cmd: 'blockMesh' | 'checkMesh' | 'setFields' | 'foamRun'; steps?: number }, id) => {
           if (!ALLOWED_RUN_COMMANDS.has(input.cmd)) {
             throw new Error(`command not allowed: ${input.cmd}`)
           }
-          if (input.cmd === 'foamRun') {
-            const missing = REQUIRED_SOLVER_FILES.filter((rel) => !fs.existsSync(safeJoin(caseDir, rel)))
-            if (missing.length > 0) {
-              throw new Error(`cannot run foamRun before required files exist: ${missing.join(', ')}`)
-            }
-          }
+          if (opts.readOnly) throw new Error('This question is read-only')
           if ((input.cmd === 'blockMesh' || input.cmd === 'checkMesh') &&
               !fs.existsSync(safeJoin(caseDir, 'system/blockMeshDict'))) {
             throw new Error('cannot run mesh commands before system/blockMeshDict exists')
@@ -355,8 +377,10 @@ export function makeTools(opts: MakeToolsOptions) {
                 command: input.cmd,
                 args: [],
                 caseDir,
+                ...(opts.signal ? { signal: opts.signal } : {}),
                 onLine: (line) => {
                   captured.push(line)
+                  if (captured.length > 20_000) captured.shift()
                   // Throttle to 1 line / 80ms so the UI doesn't drown.
                   const now = Date.now()
                   if (now - lastSent >= 80 || captured.length <= 5) {
@@ -372,20 +396,23 @@ export function makeTools(opts: MakeToolsOptions) {
           }
 
           if (input.cmd === 'foamRun') {
-            // Bounded smoke-test: temporarily cap endTime in controlDict
-            // (foamRun has no -endTime flag; OF13 rejects unknown options).
-            const steps = Math.min(input.steps ?? 5, maxSolverSteps)
-            await withCappedEndTime(caseDir, steps, runIt)
-          } else {
-            await runIt()
+            const validation = await validateCaseInIsolation(docker, caseDir, {
+              ...(opts.signal ? { signal: opts.signal } : {}),
+              steps: Math.min(input.steps ?? 5, maxSolverSteps),
+              onLine: line => onEvent({ type: 'tool-progress', id, line }),
+            })
+            return { cmd: input.cmd, ok: validation.ok, exitCode: validation.ok ? 0 : -1,
+              smokeTestSteps: Math.min(input.steps ?? 5, maxSolverSteps),
+              meshChecked: validation.meshChecked, solverAdvanced: validation.solverAdvanced,
+              outputTail: validation.log.slice(-4000), failedCommand: validation.failedCommand }
           }
+          await runIt()
 
           const tail = captured.slice(-30).join('\n')
           return {
             cmd: input.cmd,
-            ...(input.cmd === 'foamRun' ? { smokeTestSteps: Math.min(input.steps ?? 5, maxSolverSteps) } : {}),
             exitCode,
-            ok: exitCode === 0,
+            ok: input.cmd === 'checkMesh' ? meshCheckPassed(exitCode, captured.join('\n')) : exitCode === 0 && !/FOAM FATAL/.test(captured.join('\n')),
             outputTail: tail,
             totalLines: captured.length,
           }
@@ -406,6 +433,7 @@ export function makeTools(opts: MakeToolsOptions) {
       execute: withTracing({
         toolName: 'finish',
         onEvent,
+        signal: opts.signal,
         fn: async (input: { summary: string }) => {
           onEvent({ type: 'finish', summary: input.summary })
           onFinish?.(input.summary)
@@ -414,4 +442,12 @@ export function makeTools(opts: MakeToolsOptions) {
       }),
     }),
   }
+  if (opts.readOnly) {
+    // Keep the return type stable for callers; the model sees only the actual keys.
+    const available = tools as Partial<typeof tools>
+    delete available.write_case_file
+    delete available.edit_case_file
+    delete available.run_command
+  }
+  return tools
 }

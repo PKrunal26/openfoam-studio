@@ -5,22 +5,32 @@ interface TopBarProps {
   projectName?: string
   solver?: string
   onBack?: () => void
+  onRename?: () => void
+  onExport?: () => void
+  onSupport?: () => void
   onGenerate?: () => void
   generating?: boolean
   onRun?: () => void
   onCancelRun?: () => void
   running?: boolean
+  runLabel?: string
+  runHint?: string
 }
 
 export function TopBar({
   projectName,
   solver,
   onBack,
+  onRename,
+  onExport,
+  onSupport,
   onGenerate,
   generating,
   onRun,
   onCancelRun,
   running,
+  runLabel = 'Run',
+  runHint,
 }: TopBarProps) {
   return (
     <header className="flex h-11 shrink-0 items-center justify-between border-b bg-background px-3">
@@ -38,6 +48,7 @@ export function TopBar({
           <span className="truncate text-sm font-medium">
             {projectName ?? 'OpenFOAM Studio'}
           </span>
+          {onRename && <button onClick={onRename} className="rounded px-1 text-[10px] text-muted-foreground hover:bg-accent" aria-label="Rename project">Rename</button>}
           {solver ? (
             <span className="ml-2 rounded-md border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
               {solver}
@@ -47,6 +58,8 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-1.5">
+        {onExport && <button onClick={onExport} className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent">Export</button>}
+        {onSupport && <button onClick={onSupport} title="Download a report with project/chat/command details and known credentials redacted. Review it before sharing." className="rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-accent">Support bundle</button>}
         <button
           onClick={onGenerate}
           disabled={!onGenerate || generating || running}
@@ -62,7 +75,7 @@ export function TopBar({
             'text-foreground hover:bg-accent disabled:opacity-50',
           )}
         >
-          Generate
+          Assistant
         </button>
         {running ? (
           <button
@@ -79,14 +92,14 @@ export function TopBar({
           <button
             onClick={onRun}
             disabled={!onRun || generating}
-            title={generating ? 'Wait for generation to finish — case files are still being written' : 'Mesh and solve the case'}
+            title={runHint ?? (generating ? 'Wait for generation to finish — case files are still being written' : 'Mesh and solve the case')}
             className={cn(
               'inline-flex h-7 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-medium',
               'text-primary-foreground hover:bg-primary/90 disabled:opacity-50',
             )}
           >
             <Play className="h-3.5 w-3.5 fill-current" />
-            Run
+            {runLabel}
           </button>
         )}
       </div>

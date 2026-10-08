@@ -1,40 +1,9 @@
-# Security Policy
+# Security policy
 
-## Reporting a vulnerability
+Report vulnerabilities privately using the repository's Security > Report a vulnerability control if available. Do not include working secrets, private CFD cases, or exploit payloads in public issues. Include the affected version/commit, impact, and minimal reproduction. No response-time SLA is currently promised. Security fixes target the current candidate; older rolling releases are not maintained as separate branches.
 
-Please **do not open a public GitHub issue** for security vulnerabilities.
+The app serves a loopback HTTP API with Host/Origin checks and privileged-request authentication. Electron verifies application/version/protocol before using a backend, restricts navigation, disables Node in the renderer, and delegates credential encryption to OS-backed safeStorage. Headless/source storage has different guarantees; see [privacy guidance](docs/PRIVACY.md).
 
-Report privately through **Security > Report a vulnerability** (GitHub Private Vulnerability
-Reporting) on this repository, and include:
+OpenFOAM dictionaries and third-party CLI tooling are execution inputs. Command allowlists and case policy are defense layers, not a blanket sandbox guarantee. Reports involving path traversal, unexpected executable dictionaries, unauthorized host/container operations, token/key leakage, cross-origin access, incorrect project mutation, or packaging of local user projects are in scope. Do not run untrusted cases on systems containing sensitive data.
 
-- A description of the issue and its impact
-- Steps to reproduce
-- Affected version or commit
-
-You can expect an acknowledgement within a few days. Please give a reasonable window to
-release a fix before any public disclosure.
-
-## Supported versions
-
-This is an early-stage project. Security fixes are applied to the latest release on `main`.
-Older versions are not maintained.
-
-## Scope and design notes
-
-A few things are good to know when assessing risk:
-
-- **API keys (BYOK):** The app uses your own LLM provider key. Keys are stored locally on your
-  machine and are never committed. `.env` is gitignored. Reports of keys leaking into logs,
-  builds, or network calls to unexpected hosts are in scope.
-- **Docker command allowlist:** OpenFOAM commands run through a vetted runner
-  (`core/docker/CommandRunner.ts`). No raw shell access is exposed to the AI agent. Any path
-  that lets the agent or a crafted prompt run an un-allowlisted command on the host or in the
-  container is in scope.
-- **File writing:** Generated case files are written under managed project directories. Path
-  traversal that writes outside those directories is in scope.
-
-## Out of scope
-
-- Vulnerabilities in OpenFOAM itself, Docker, or third-party LLM providers
-- Issues that require a already-compromised local machine
-- Missing code-signing on prebuilt binaries (a known limitation, see the README)
+Code-signing/notarization, clean-platform testing, provider-side retention, Docker/OpenFOAM vulnerabilities, and local-machine compromise require separate controls. Missing signing is a known alpha limitation and remains a broad-release gate; see the README.

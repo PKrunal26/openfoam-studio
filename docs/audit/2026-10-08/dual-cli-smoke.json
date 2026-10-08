@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-08",
+  "configuration": "disposable",
+  "bothCliOptionsVisible": true,
+  "savedClaudeSurvivesFullReload": true,
+  "switchBackToCodexPersists": true,
+  "settingsModels": {
+    "codex-cli": "gpt-6.1-sol",
+    "claude-cli": "sonnet"
+  },
+  "reviewerAndConnectionDispatchRegression": "both providers honored; failure has no fallback",
+  "apiGuidanceRenderedAsProse": true,
+  "apiGuidanceHasCopyButton": false,
+  "exactClaudeLoginCommand": "claude auth login",
+  "liveClaudeConnection": {
+    "ok": false,
+    "provider": "claude-cli",
+    "model": "sonnet",
+    "prompt": "Reply with OK.",
+    "message": "CLI/model request failed; login/model/version guidance provided"
+  },
+  "unitTests": 281,
+  "stage0Tests": 15,
+  "otherStageEvidence": "Stages 1\u20135 captured before follow-up; not repeated",
+  "packageUnpackedAndMountedPayloadVerified": true,
+  "installer": {
+    "name": "OpenFOAM Studio-1.0.3-arm64.dmg",
+    "size": 146666711,
+    "sha256": "789eab2e5946361b25e76d72979fd0f5857a3d85859f8f13b943a7996dc1c1e7",
+    "architecture": "arm64",
+    "signing": "ad-hoc",
+    "notarized": false
+  }
+}

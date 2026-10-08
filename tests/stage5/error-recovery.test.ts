@@ -282,7 +282,12 @@ describe('Stage 5 — Error Recovery', () => {
       // Call Reviewer
       console.log('[Test 2] Calling Reviewer agent...')
       const reviewer = new Reviewer()
-      const result = await reviewer.review(errorText, brokenFiles)
+      // Recovery needs the missing physical intent, rather than guessing a
+      // lid speed from a patch name. The test engineer owns the original case.
+      const intendedVelocity = /movingWall\s*\{[\s\S]*?value\s+uniform\s*(\([^)]*\))/.exec(originalU)?.[1]
+      expect(intendedVelocity, 'The original fixture must specify its moving-lid velocity').toBeTruthy()
+      const confirmedIntent = `Engineer-confirmed simulation intent: movingWall is the lid, with a fixedValue velocity of ${intendedVelocity} m/s. Restore that missing boundary condition only; preserve all other case inputs.`
+      const result = await reviewer.review(`${errorText}\n\n${confirmedIntent}`, brokenFiles)
       console.log(`[Test 2] Reviewer: ${JSON.stringify({ ...result, correctedContent: '[...]' })}`)
 
       expect('cannotIdentify' in result, 'Reviewer must not give up').toBe(false)

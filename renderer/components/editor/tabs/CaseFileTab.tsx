@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Editor, { loader } from '@monaco-editor/react'
-import * as monaco from 'monaco-editor'
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api.js'
+import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js'
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
 import { useEditorStore, type EditorTab } from '@/store/useEditorStore'
 
@@ -40,7 +41,7 @@ export function CaseFileTab({ tab, projectId }: Props) {
       </div>
     )
   }
-  if (tab.error) {
+  if (tab.error && tab.content == null) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-destructive">
         {tab.error}
@@ -58,16 +59,20 @@ export function CaseFileTab({ tab, projectId }: Props) {
           {dirty && <span className="text-amber-500">●  unsaved</span>}
           <button
             onClick={() => saveTab(projectId, tab.id).catch(() => {})}
-            disabled={!dirty}
+            disabled={!dirty || tab.saving}
             className="rounded-sm px-2 py-0.5 hover:bg-accent disabled:opacity-40"
           >
-            Save
+            {tab.saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>
+      {tab.saveError && <div role="alert" className="border-b border-destructive/30 p-3 text-xs text-destructive">
+        {tab.saveError}
+        <button className="ml-2 rounded border px-2 py-1" onClick={() => useEditorStore.getState().guard(() => { void useEditorStore.getState().reloadFiles(projectId, tab.id) }, [tab.id])}>Reload disk version</button>
+      </div>}
       <div className="flex-1 min-h-0">
         <Editor
-          path={tab.relPath}
+          path={`${projectId}/${tab.relPath}`}
           theme="vs-dark"
           language="cpp"
           value={tab.content ?? ''}

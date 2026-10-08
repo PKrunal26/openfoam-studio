@@ -1,3 +1,4 @@
+import { backendFetch } from '@/lib/backendFetch'
 import { useEffect, useRef, useState } from 'react'
 import { Box, RefreshCw } from 'lucide-react'
 import '@kitware/vtk.js/Rendering/Profiles/Geometry'
@@ -164,7 +165,7 @@ function GeometryTabInner() {
       for (let i = 0; i < meshPatches.length; i++) {
         const p = meshPatches[i]!
         try {
-          const res = await fetch(vtkFileUrl(project.id, p.relPath))
+          const res = await backendFetch(vtkFileUrl(project.id, p.relPath))
           if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
           if (cancelled) return
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

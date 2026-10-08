@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { CheckCircle2, AlertCircle, Loader2, Square, XCircle, Ban } from 'lucide-react'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useRunsStore } from '@/store/useRunsStore'
@@ -45,17 +45,22 @@ export function RunsPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const request = useRef(0)
+  useEffect(() => { request.current++; return () => { request.current++ } }, [project?.id])
   const refresh = useCallback(async () => {
     if (!project) return
+    const token = ++request.current
     setLoading(true)
     try {
       const data = await api.listRuns(project.id)
+      if (token !== request.current || useProjectStore.getState().project?.id !== project.id) return
       setRuns(data)
       setError(null)
     } catch (err) {
+      if (token !== request.current) return
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (token === request.current) setLoading(false)
     }
   }, [project])
 
@@ -72,8 +77,8 @@ export function RunsPanel() {
     )
   }
 
-  const onClickRun = (run: api.RunRecord) => {
-    openSpecialTab('logs', 'Logs')
+  const onClickRun = (run: api.RunRecord, results = false) => {
+    openSpecialTab(results ? 'visualization' : 'logs', results ? 'Results' : 'Logs')
     if (liveStatus === 'running' && run.id === liveRunId) {
       viewLiveRun()
     } else {
@@ -90,7 +95,7 @@ export function RunsPanel() {
     return <div className="px-3 py-2 text-xs text-muted-foreground">Loading runs…</div>
   }
   if (error) {
-    return <div className="px-3 py-2 text-xs text-destructive">{error}</div>
+    return <div role="alert" className="px-3 py-2 text-xs text-destructive">{error}<button className="mt-2 rounded border px-2 py-1" onClick={() => void refresh()}>Retry</button></div>
   }
   if (runs.length === 0) {
     return (
@@ -109,9 +114,8 @@ export function RunsPanel() {
           ? run.exits.map((e) => `${e.cmd}=${e.code}`).join(' · ')
           : null
         return (
-          <button
+          <div
             key={run.id}
-            onClick={() => onClickRun(run)}
             className={cn(
               'flex w-full flex-col items-start gap-0.5 border-l-2 px-3 py-1.5 text-left text-xs hover:bg-sidebar-accent/60',
               selected
@@ -119,19 +123,20 @@ export function RunsPanel() {
                 : 'border-l-transparent',
             )}
           >
-            <div className="flex w-full items-center gap-2">
+            <button onClick={() => onClickRun(run)} aria-label={`View logs for run ${run.id}`} className="flex w-full items-center gap-2 text-left">
               {statusIcon(run.status)}
-              <span className="font-medium capitalize">{run.status}</span>
+              <span className="font-medium capitalize">{run.status === 'success' ? 'Completed' : run.status === 'reference' ? 'Reference data' : run.status}</span>
               <span className="ml-auto text-[10px] text-muted-foreground">
                 {timeAgo(run.startedAt)}
               </span>
-            </div>
+            </button>
             <div className="flex w-full items-center gap-2 pl-5 text-[10px] text-muted-foreground">
               <span className="font-mono">{run.id}</span>
               {dur && <span>· {dur}</span>}
               {exitsLabel && <span className="truncate">· {exitsLabel}</span>}
             </div>
-          </button>
+            {run.status !== 'running' && <button onClick={() => onClickRun(run, true)} className="ml-5 mt-1 rounded border px-2 py-0.5 text-[11px]" aria-label={`View results for run ${run.id}`}>View results</button>}
+          </div>
         )
       })}
     </div>

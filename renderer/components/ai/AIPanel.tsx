@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Eraser } from 'lucide-react'
 import { useProjectStore } from '@/store/useProjectStore'
+import { useEditorStore, isDirty } from '@/store/useEditorStore'
 import { useChatStore } from '@/store/useChatStore'
 import { useRunsStore } from '@/store/useRunsStore'
 import { MessageBlock } from './blocks/MessageBlock'
@@ -11,12 +12,13 @@ import { DiagnosisDiffBlock } from './blocks/DiagnosisDiffBlock'
 import { ChatInput } from './ChatInput'
 
 const SUGGESTIONS = [
-  'Lid-driven cavity at Re=100',
-  'Channel flow with a heated bottom wall',
-  'Flow over a backward-facing step at Re=200',
+  { prompt: 'Lid-driven cavity at Re=100', intent: 'edit' as const },
+  { prompt: 'Explain the assumptions in this case', intent: 'question' as const },
+  { prompt: 'Review the boundary conditions without changing files', intent: 'question' as const },
 ]
 
 export function AIPanel() {
+  const executionAllowed = useProjectStore((s) => s.executionAllowed)
   const project = useProjectStore((s) => s.project)
   const refreshFiles = useProjectStore((s) => s.refreshFiles)
   const messages = useChatStore((s) => s.messages)
@@ -55,12 +57,12 @@ export function AIPanel() {
     // set at creation) so clearing chat history later can't silently re-trigger
     // a fresh generation on the next visit.
     const initialPrompt = project.prompt?.trim()
-    if (project.status === 'idle' && persisted.length === 0 && initialPrompt) {
+    if (executionAllowed && project.status === 'idle' && persisted.length === 0 && initialPrompt) {
       sendPrompt(project.id, initialPrompt, {
-        onFilesWritten: () => refreshFiles().catch(() => {}),
+        onFilesWritten: () => { void refreshFiles(); void useEditorStore.getState().reloadFiles(project.id) },
       })
     }
-  }, [project, setMessages, sendPrompt, refreshFiles])
+  }, [project, executionAllowed, setMessages, sendPrompt, refreshFiles])
 
   // Auto-scroll on updates — but only when the user is already near the
   // bottom, so scrolling up to read history isn't hijacked mid-stream.
@@ -83,12 +85,17 @@ export function AIPanel() {
     streaming?.pendingToolCalls.length,
   ])
 
-  const onSubmit = (prompt: string) => {
-    if (!project) return
+  const onSubmit = (prompt: string, intent: 'question' | 'edit') => {
+    if (!project || !executionAllowed) return
+    if (intent === 'edit' && useEditorStore.getState().tabs.some(isDirty)) {
+      setClearError('Save or discard file edits before asking the assistant to change the case.'); return
+    }
     pinnedToBottom.current = true
     sendPrompt(project.id, prompt, {
+      intent,
       onFilesWritten: () => {
-        refreshFiles().catch(() => {})
+        void refreshFiles()
+        void useEditorStore.getState().reloadFiles(project.id)
       },
     })
   }
@@ -136,7 +143,7 @@ export function AIPanel() {
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-3 py-3">
         {clearError && (
           <div className="mb-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">
-            Failed to clear history: {clearError}
+            {clearError}
           </div>
         )}
         {empty ? (
@@ -150,11 +157,11 @@ export function AIPanel() {
               <div className="mt-3 grid gap-1.5">
                 {SUGGESTIONS.map((s) => (
                   <button
-                    key={s}
-                    onClick={() => onSubmit(s)}
+                    key={s.prompt}
+                    onClick={() => onSubmit(s.prompt, s.intent)}
                     className="rounded-md border border-border/60 bg-background/40 px-2.5 py-1.5 text-left text-[11px] text-foreground/80 hover:border-border hover:bg-accent hover:text-foreground"
                   >
-                    {s}
+                    {s.prompt}
                   </button>
                 ))}
               </div>
@@ -195,10 +202,11 @@ export function AIPanel() {
       <div className="border-t p-2">
         <ChatInput
           onSubmit={onSubmit}
+          disabled={!executionAllowed}
           onCancel={cancel}
           streaming={!!streaming}
           placeholder={
-            project ? 'Describe the simulation…' : 'Open a project to chat…'
+            !executionAllowed ? 'Complete setup to use the assistant…' : project ? 'Describe the simulation…' : 'Open a project to chat…'
           }
         />
       </div>

@@ -17,12 +17,18 @@
     "!node_modules/vitest/**",
     "!node_modules/@vitest/**",
     "!node_modules/rolldown/**",
-    "package.json"
+    "package.json",
+    "!demo/projects/**",
+    "!demo/.generated-case/**"
   ],
   "win": {
     "target": [
-      { "target": "nsis", "arch": ["x64"] },
-      { "target": "nsis", "arch": ["arm64"] }
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
     ]
   },
   "nsis": {
@@ -30,7 +36,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "deleteAppDataOnUninstall": true
+    "deleteAppDataOnUninstall": false
   },
   "directories": {
     "output": "dist"

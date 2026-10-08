@@ -1,37 +1,25 @@
-name: CI
-
+name: PR code checks
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   check:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck renderer
-        run: npm run typecheck:renderer
-
-      - name: Agent unit tests
-        run: npm run test:agent
-
-      - name: Postprocess unit tests
-        run: npm run test:postprocess
+      - run: npm ci
+      - run: npm run test:unit
+      - run: npm run typecheck
+      - run: npm run build:renderer
+      - run: npm run build:server
+      - run: node scripts/verify-package.mjs

@@ -8,6 +8,7 @@
 
 import { CAVITY_SYSTEM_PROMPT } from './prompts/cavity-system-prompt.js'
 import { generateWithLLM } from './llm.js'
+import { assertSafeDictionary } from '../run/casePolicy.js'
 import type { CaseFiles, Message } from './types.js'
 
 export type { CaseFiles }
@@ -85,6 +86,7 @@ export class FileGenerator {
     prompt: string,
     onProgress?: (msg: string) => void,
     history?: Message[],
+    signal?: AbortSignal,
   ): Promise<CaseFiles> {
     const isRefinement = history !== undefined && history.length > 0
     const userPrompt = isRefinement
@@ -112,7 +114,7 @@ export class FileGenerator {
     const { text: resultText, provider, model } = await generateWithLLM(
       CAVITY_SYSTEM_PROMPT,
       userPrompt,
-      { ...(onText ? { onDelta: onText } : {}), maxOutputTokens: 16384 },
+      { ...(onText ? { onDelta: onText } : {}), maxOutputTokens: 16384, ...(signal ? { signal } : {}) },
     )
     console.log(`  [FileGenerator] Using ${provider} / ${model}`)
 
@@ -139,6 +141,8 @@ export class FileGenerator {
       }
     }
 
+    if (!files || typeof files !== 'object' || Array.isArray(files)) throw new Error('Generated files must be a JSON object')
+
     // On first turn, validate all required keys are present.
     // On refinement turns, Claude returns only the changed files — that's expected.
     if (!isRefinement) {
@@ -156,6 +160,8 @@ export class FileGenerator {
       }
       // Normalise path separators and line endings
       const key = filePath.replace(/\\/g, '/')
+      if (!/^(?:0|constant|system)\/[^\0]+$/.test(key) || key.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`Invalid generated case path: ${filePath}`)
+      assertSafeDictionary(content, key)
       normalised[key] = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     }
 
@@ -191,6 +197,7 @@ export class FileGenerator {
 
       const { text } = await generateWithLLM(CAVITY_SYSTEM_PROMPT, userPrompt, {
         maxOutputTokens: 2048,
+        ...(signal ? { signal } : {}),
       })
 
       if (!text.trim()) {
@@ -203,6 +210,7 @@ export class FileGenerator {
         .replace(/\n?```\s*$/, '')
         .trim()
 
+      assertSafeDictionary(cleaned, fileKey)
       results[fileKey] = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     }
 

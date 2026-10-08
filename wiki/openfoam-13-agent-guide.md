@@ -133,7 +133,7 @@ The agent should also check:
 - expected qualitative physics
 - benchmark agreement where available
 
-For the current cavity path, compare against the Ghia centerline profile.
+For the current cavity path, the Stage 4 suite compares against the Ghia centerline profile with its documented mesh, sampling, exclusions, and tolerance. The app does not provide a general benchmark certificate.
 
 ## 9. Important mismatches already present in the repo
 
@@ -141,12 +141,14 @@ These matter for future contributors:
 
 - Docker execution is now centralized in `core/docker/CommandRunner.ts`.
 - Host-side setup repair commands are allowlisted in `core/setup/HostCommandRunner.ts`.
-- Renderer and Electron layers are mostly placeholders.
-- Tests are currently the real product surface.
-- Some docs still describe the project as if Stage 0 is current, while the test
-  tree and plans imply work through Stage 5.
+- The React renderer, REST/SSE server, and Electron wrapper implement the conversational workspace and results viewer. Headless Node core must remain independent of Electron.
+- Codex CLI returns typed proposals from supplied context in tool-disabled, ephemeral, read-only sessions. The application owns file writes and command execution; the model never receives raw shell access. API providers use the same case intent and application policy boundaries.
+- Questions and chat reset preserve case identity. Replacements and refinements preserve recoverable input revisions; manual buffers use conflict checks before save.
+- Recovery patches require a complete validated transaction and explicit user approval. Mesh validation runs before the solver and static policy rejects executable dictionaries/functions.
+- Run success reports execution completion. Ghia physics evidence belongs to the ordered Stage 4 benchmark; fixture/reference data carries no such certificate.
+- Stage 0–5 release validation must run in order and stop on failure. Historical completion and a source build do not certify the current installers.
 
-An AI should treat the tests and fixtures as the strongest source of truth.
+Treat current code, validation records, and exact fixture provenance as evidence; do not infer passed stages or physics accuracy from project labels.
 
 ## 10. Image truth for this repo
 

@@ -1,9 +1,13 @@
 'use strict'
 
-const { app, BrowserWindow, session } = require('electron')
+const { app, BrowserWindow, session, safeStorage, shell } = require('electron')
 const { spawn } = require('child_process')
 const http = require('http')
 const path = require('path')
+const fs = require('fs')
+const { randomBytes, randomUUID } = require('crypto')
+const VERSION = require('../package.json').version
+const SERVER_TOKEN = randomBytes(32).toString('hex')
 
 const PORT = 3456
 let serverProc = null
@@ -11,6 +15,14 @@ let serverFailure = null
 let mainWindow = null
 /** False when we adopted a backend someone else started — never kill that one. */
 let ownsServer = false
+
+// Match the standalone server's explicit data-directory override. This also
+// allows packaged smoke tests to use disposable data without opening real cases.
+if (process.env.OFS_CONFIG_DIR) {
+  if (!path.isAbsolute(process.env.OFS_CONFIG_DIR)) throw new Error('OFS_CONFIG_DIR must be an absolute path')
+  fs.mkdirSync(process.env.OFS_CONFIG_DIR, { recursive: true, mode: 0o700 })
+  app.setPath('userData', process.env.OFS_CONFIG_DIR)
+}
 
 // NOTE: do NOT call app.disableHardwareAcceleration() here. It forces Chromium
 // onto SwiftShader (software GL), which makes the vtk.js Geometry/Results
@@ -151,22 +163,48 @@ function startServer() {
 
   ownsServer = true
   serverProc = spawn(process.execPath, spawnArgs, {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     cwd: appRoot,
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       OFS_CONFIG_DIR: app.getPath('userData'),
+      OFS_SERVER_TOKEN: SERVER_TOKEN,
+      OFS_CREDENTIAL_IPC: '1',
     },
   })
 
+  serverProc.on('message', message => {
+    if (!message || message.type !== 'ofs-credentials' || typeof message.id !== 'string') return
+    const reply = { type: 'ofs-credentials-reply', id: message.id }
+    try {
+      if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') throw new Error('OS credential encryption is unavailable. Unlock the system keychain and relaunch.')
+      const file = path.join(app.getPath('userData'), 'credentials.enc')
+      if (message.action === 'load') {
+        reply.keys = fs.existsSync(file) ? JSON.parse(safeStorage.decryptString(fs.readFileSync(file))) : {}
+      } else if (message.action === 'save') {
+        if (!message.keys || typeof message.keys !== 'object') throw new Error('Invalid credential payload')
+        for (const [provider, key] of Object.entries(message.keys)) {
+          if (!['anthropic', 'openai', 'google', 'openai-compatible'].includes(provider) || typeof key !== 'string') throw new Error('Invalid credential payload')
+        }
+        fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+        const temporary = path.join(path.dirname(file), `.credentials-${randomUUID()}.tmp`)
+        const fd = fs.openSync(temporary, 'wx', 0o600)
+        try { fs.writeFileSync(fd, safeStorage.encryptString(JSON.stringify(message.keys))); fs.fsyncSync(fd) }
+        finally { fs.closeSync(fd) }
+        try { fs.renameSync(temporary, file) }
+        finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary) }
+      } else throw new Error('Unknown credential operation')
+    } catch (err) { reply.error = err.message }
+    serverProc?.send(reply)
+  })
   let stderr = ''
   serverProc.stdout.on('data', (chunk) => {
     process.stdout.write(chunk)
   })
   serverProc.stderr.on('data', (chunk) => {
     const text = chunk.toString()
-    stderr += text
+    stderr = (stderr + text).slice(-64_000)
     process.stderr.write(chunk)
   })
   serverProc.on('error', (err) => {
@@ -180,15 +218,22 @@ function startServer() {
   })
 }
 
-/** Single quick probe: is something already serving on PORT? */
+/** A TCP response alone does not prove this is our compatible application. */
 function probeServer(timeoutMs = 1000) {
-  return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${PORT}/`, (res) => {
-      res.destroy()
-      resolve(true)
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${PORT}/api/identity`, res => {
+      let body = ''
+      res.on('data', chunk => { body += chunk.toString(); if (body.length > 4096) req.destroy() })
+      res.on('end', () => {
+        try {
+          const identity = JSON.parse(body)
+          resolve(res.statusCode === 200 && identity.application === 'openfoam-studio' && identity.version === VERSION && identity.protocol === 1 ? 'compatible' : 'occupied')
+        } catch { resolve('occupied') }
+      })
+      res.on('error', () => resolve('occupied'))
     })
-    req.on('error', () => resolve(false))
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(false) })
+    req.on('error', err => resolve(err.code === 'ECONNREFUSED' ? 'absent' : 'occupied'))
+    req.setTimeout(timeoutMs, () => { req.destroy(); resolve('occupied') })
   })
 }
 
@@ -202,38 +247,27 @@ function probeServer(timeoutMs = 1000) {
  * it idempotent since before-quit/will-quit/window-all-closed can all fire.
  */
 function stopServer() {
-  if (!serverProc || !ownsServer) return
+  if (!serverProc || !ownsServer) return Promise.resolve()
   const proc = serverProc
   serverProc = null
-  try {
-    proc.kill('SIGTERM')
-  } catch { /* already gone */ }
-  // SIGTERM is enough for a plain HTTP server, but never leave the port held:
-  // escalate if the child is still around a moment later.
-  setTimeout(() => {
-    if (proc.exitCode === null && proc.signalCode === null) {
+  return new Promise(resolve => {
+    if (proc.exitCode !== null || proc.signalCode !== null) { resolve(); return }
+    const timeout = setTimeout(() => {
       try { proc.kill('SIGKILL') } catch { /* already gone */ }
-    }
-  }, 1500)
+      resolve()
+    }, 5_000)
+    proc.once('exit', () => { clearTimeout(timeout); resolve() })
+    try { proc.kill('SIGTERM') } catch { clearTimeout(timeout); resolve() }
+  })
 }
 
-function waitForServer(maxMs = 30000) {
+async function waitForServer(maxMs = 30000) {
   const start = Date.now()
-  return new Promise((resolve) => {
-    function attempt() {
-      if (serverFailure) { resolve(false); return }
-      if (Date.now() - start > maxMs) { resolve(false); return }
-      // 127.0.0.1, not localhost: the server binds IPv4 loopback only, and
-      // Node may resolve localhost to ::1 first.
-      const req = http.get(`http://127.0.0.1:${PORT}/`, (res) => {
-        res.destroy()
-        resolve(true)
-      })
-      req.on('error', () => setTimeout(attempt, 500))
-      req.setTimeout(400, () => { req.destroy(); setTimeout(attempt, 500) })
-    }
-    attempt()
-  })
+  while (Date.now() - start < maxMs && !serverFailure) {
+    if (await probeServer(500) === 'compatible') return true
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+  return false
 }
 
 function focusMainWindow() {
@@ -249,6 +283,7 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(async () => {
+  if (!gotSingleInstanceLock) return
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -257,6 +292,7 @@ app.whenReady().then(async () => {
     backgroundColor: '#1e1e1e',
     title: 'OpenFOAM Studio',
     show: false,
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true },
   })
 
   if (app.dock?.show) app.dock.show()
@@ -266,6 +302,18 @@ app.whenReady().then(async () => {
     mainWindow.show()
     mainWindow.focus()
     app.focus({ steal: true })
+  })
+  const allowedOrigins = new Set([`http://127.0.0.1:${PORT}`, ...(process.env.OFS_DEV === '1' ? ['http://localhost:5173'] : [])])
+  const isAppURL = value => { try { return allowedOrigins.has(new URL(value).origin) } catch { return false } }
+  mainWindow.webContents.on('will-navigate', (event, url) => { if (!isAppURL(url)) event.preventDefault() })
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try { if (['https:', 'http:'].includes(new URL(url).protocol)) void shell.openExternal(url) } catch { /* ignore malformed URLs */ }
+    return { action: 'deny' }
+  })
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`http://127.0.0.1:${PORT}/*`] }, (details, callback) => {
+    if (ownsServer) details.requestHeaders['X-OFS-Token'] = SERVER_TOKEN
+    callback({ requestHeaders: details.requestHeaders })
   })
   showLoadingWindow(mainWindow)
   mainWindow.webContents.on('did-fail-load', (_event, code, description, validatedURL) => {
@@ -287,7 +335,12 @@ app.whenReady().then(async () => {
 
   // A backend may already be listening — an orphan from a previous run, or the
   // dev server. Adopt it instead of spawning a rival that dies on EADDRINUSE.
-  if (await probeServer()) {
+  const existing = await probeServer()
+  if (existing === 'occupied' || (existing === 'compatible' && app.isPackaged)) {
+    showStartupError(mainWindow, 'Port 3456 is occupied. Close the existing local server or app, then reopen OpenFOAM Studio. The packaged app requires its own authenticated backend.')
+    return
+  }
+  if (existing === 'compatible') {
     console.log(`[electron] Reusing backend already listening on ${PORT}`)
     ownsServer = false
   } else {
@@ -310,11 +363,15 @@ app.on('activate', () => {
   focusMainWindow()
 })
 
-app.on('before-quit', stopServer)
-app.on('will-quit', stopServer)
-process.on('exit', stopServer)
-
-app.on('window-all-closed', () => {
-  stopServer()
-  app.quit()
+let shutdownComplete = false
+let shutdownPending = false
+app.on('before-quit', event => {
+  if (shutdownPending) { event.preventDefault(); return }
+  if (shutdownComplete || !ownsServer || !serverProc) return
+  event.preventDefault()
+  shutdownPending = true
+  void stopServer().finally(() => { shutdownPending = false; shutdownComplete = true; app.quit() })
 })
+process.on('exit', () => { if (serverProc && ownsServer) { try { serverProc.kill('SIGKILL') } catch { /* already gone */ } } })
+
+app.on('window-all-closed', () => { app.quit() })

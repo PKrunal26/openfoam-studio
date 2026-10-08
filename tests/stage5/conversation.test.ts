@@ -6,7 +6,7 @@
  *   Turn 2: refinement "Change Reynolds number to 400" → only physicalProperties, nu=0.00025
  *   Turn 3: refinement "Extend to 2 seconds" → only controlDict, endTime=2
  *
- * Prerequisites: claude CLI must be authenticated (uses Claude Code auth).
+ * Prerequisites: the selected provider must be authenticated (Codex CLI uses codex login).
  * Expected runtime: ~60 seconds.
  */
 

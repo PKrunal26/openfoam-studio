@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { CheckCircle2, AlertCircle, Terminal } from 'lucide-react'
 import { useProjectStore } from '@/store/useProjectStore'
 import { useRunsStore } from '@/store/useRunsStore'
@@ -32,17 +32,22 @@ export function CommandsPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const request = useRef(0)
+  useEffect(() => { request.current++; return () => { request.current++ } }, [project?.id])
   const refresh = useCallback(async () => {
     if (!project) return
+    const token = ++request.current
     setLoading(true)
     try {
       const data = await api.listCommands(project.id, 200)
+      if (token !== request.current || useProjectStore.getState().project?.id !== project.id) return
       setCommands(data)
       setError(null)
     } catch (err) {
+      if (token !== request.current) return
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setLoading(false)
+      if (token === request.current) setLoading(false)
     }
   }, [project])
 
@@ -58,7 +63,7 @@ export function CommandsPanel() {
     return <div className="px-3 py-2 text-xs text-muted-foreground">Loading commands…</div>
   }
   if (error) {
-    return <div className="px-3 py-2 text-xs text-destructive">{error}</div>
+    return <div role="alert" className="px-3 py-2 text-xs text-destructive">{error}<button className="mt-2 rounded border px-2 py-1" onClick={() => void refresh()}>Retry</button></div>
   }
   if (commands.length === 0) {
     return (

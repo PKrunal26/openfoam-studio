@@ -16,7 +16,7 @@
 import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { findClaudeBin } from './claude-runner.js'
+import { findClaudeBin, restrictedCliArgs, restrictedCliEnv } from './claude-runner.js'
 import { getActiveModel, readConfig } from '../setup/appConfig.js'
 
 import { AGENT_SYSTEM_PROMPT } from './prompts/agent-system-prompt.js'
@@ -29,6 +29,8 @@ export interface RunClaudeAgentOptions {
   history?: Message[]
   onEvent: (e: AgentEvent) => void
   signal?: AbortSignal
+  timeoutMs?: number
+  readOnly?: boolean
 }
 
 export interface ClaudeAgentResult {
@@ -97,7 +99,12 @@ function previewToolResult(content: unknown, max = 300): string {
 }
 
 export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<ClaudeAgentResult> {
-  const { caseDir, prompt, history, onEvent, signal } = opts
+  const { caseDir, prompt, history, onEvent } = opts
+  const signal = AbortSignal.any([opts.signal ?? new AbortController().signal,
+    AbortSignal.timeout(opts.timeoutMs ?? 10 * 60_000)])
+  signal.throwIfAborted()
+  const binary = findClaudeBin()
+  const safetyArgs = restrictedCliArgs(binary, opts.readOnly ? 'Read,Glob,Grep' : 'Read,Write,Edit,Glob,Grep')
 
   // Compose the user input: prior history + current request.
   const userText = (() => {
@@ -110,6 +117,7 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
       }
       lines.push('---', '')
     }
+    if (opts.readOnly) lines.push('Explanation-only request. Read case inputs and answer; no files or commands may be changed.')
     lines.push(`Request: ${prompt}`)
     lines.push('')
     lines.push(
@@ -138,16 +146,15 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
       '--output-format', 'stream-json',
       '--verbose',
       ...(model ? ['--model', model] : []),
-      '--add-dir', caseDir,
+      ...safetyArgs,
       '--append-system-prompt', AGENT_SYSTEM_PROMPT,
-      '--permission-mode', 'acceptEdits',
-      '--allowedTools', 'Read,Write,Edit,Glob,Grep',
+      '--allowedTools', opts.readOnly ? 'Read,Glob,Grep' : 'Read,Write,Edit,Glob,Grep',
     ]
 
-    const child = spawn(findClaudeBin(), args, {
+    const child = spawn(binary, args, {
       cwd: caseDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, FORCE_COLOR: '0' },
+      env: restrictedCliEnv(),
     })
 
     child.stdin.end(userText)
@@ -164,8 +171,11 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     // `file` events — the server uses those to know what changed this turn.
     const toolCallPaths = new Map<string, string>()
 
+    let killTimer: NodeJS.Timeout | undefined
+    let terminalReceived = false
+    let terminalError = false
     const onAbort = () => {
-      try { child.kill('SIGTERM') } catch { /* ignore */ }
+      try { child.kill('SIGTERM'); killTimer = setTimeout(() => child.kill('SIGKILL'), 1_000); killTimer.unref() } catch { /* ignore */ }
     }
     if (signal) {
       if (signal.aborted) onAbort()
@@ -238,6 +248,8 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
           }
         }
       } else if (evt.type === 'result') {
+        terminalReceived = true
+        terminalError = Boolean(evt.is_error) || evt.subtype !== 'success'
         if (typeof evt.result === 'string') {
           finishSummary = evt.result.trim() || null
           finalText = evt.result
@@ -263,16 +275,21 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
     child.stdout.setEncoding('utf8')
     child.stdout.on('data', (chunk: string) => {
       stdoutBuf += chunk
+      if (stdoutBuf.length > 8 * 1024 * 1024) { onAbort(); reject(new Error('Claude CLI output limit exceeded')); return }
       flushLines()
     })
     child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk: string) => { stderrBuf += chunk })
+    child.stderr.on('data', (chunk: string) => { stderrBuf = (stderrBuf + chunk).slice(-64 * 1024) })
 
     child.on('error', (err) => {
+      signal.removeEventListener('abort', onAbort)
+      if (killTimer) clearTimeout(killTimer)
       reject(new Error(`failed to spawn claude CLI: ${err.message}`))
     })
 
     child.on('close', (code) => {
+      signal.removeEventListener('abort', onAbort)
+      if (killTimer) clearTimeout(killTimer)
       // Drain any tail.
       if (stdoutBuf.length > 0) {
         stdoutBuf += '\n'
@@ -283,7 +300,7 @@ export async function runClaudeAgent(opts: RunClaudeAgentOptions): Promise<Claud
         resolve({ finishReason: 'aborted', stepCount, finishSummary, finalText })
         return
       }
-      if (code !== 0) {
+      if (code !== 0 || !terminalReceived || terminalError) {
         const tail = stderrBuf.split('\n').slice(-5).join('\n').trim() || stdoutBuf.slice(-200)
         reject(new Error(`claude CLI exited with code ${code}: ${tail}`))
         return

@@ -53,9 +53,8 @@ describe('runHealthCheck — request failure', () => {
     const failing = result.checks.filter((c) => !c.pass)
 
     expect(failing.length).toBeGreaterThan(0)
-    // SetupModal keys its screens off these names; 'docker' is first in its
-    // priority order, so the synthetic result must use a real name.
-    expect(['docker', 'image', 'claude_cli', 'claude_auth']).toContain(failing[0]!.name)
+    // A dead backend has its own setup screen; do not blame Docker.
+    expect(failing[0]!.name).toBe('backend')
     expect(failing[0]!.fix).toMatch(/timed out/i)
   })
 

@@ -33,6 +33,7 @@ export function ResultsTab() {
 }
 
 function ResultsTabInner() {
+  const executionAllowed = useProjectStore((s) => s.executionAllowed)
   const project = useProjectStore((s) => s.project)
   const background = useResultsStore((s) => s.background)
   const toggleBackground = useResultsStore((s) => s.toggleBackground)
@@ -42,19 +43,23 @@ function ResultsTabInner() {
   const setCompareEnabled = useResultsStore((s) => s.setCompareEnabled)
   const setCompareField = useResultsStore((s) => s.setCompareField)
   const viewer = useResultsViewer(project)
+  const [pipelineOpen, setPipelineOpen] = useState(() => window.innerWidth >= 1400)
+  const [propertiesOpen, setPropertiesOpen] = useState(() => window.innerWidth >= 1400)
+  const [screenshotError, setScreenshotError] = useState<string | null>(null)
   const [probeMode, setProbeMode] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const pointerDown = useRef<{ x: number; y: number } | null>(null)
 
   const takeScreenshot = async () => {
+    setScreenshotError(null)
     try {
       const dataUrl = await viewer.engine.screenshot()
       const a = document.createElement('a')
       a.href = dataUrl
       a.download = `${project?.name ?? 'results'}-${Date.now()}.png`
       a.click()
-    } catch {
-      /* viewer not ready */
+    } catch (err) {
+      setScreenshotError(err instanceof Error ? err.message : 'Screenshot could not be saved. Wait for the viewer to finish loading, then retry.')
     }
   }
 
@@ -68,10 +73,12 @@ function ResultsTabInner() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-3 py-1.5 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
           <BarChart3 className="h-3.5 w-3.5" />
           <span>Results</span>
+          <button className={toolBtnCls} aria-expanded={pipelineOpen} onClick={() => setPipelineOpen(!pipelineOpen)}>Pipeline</button>
+          <button className={toolBtnCls} aria-expanded={propertiesOpen} onClick={() => setPropertiesOpen(!propertiesOpen)}>Properties</button>
           {viewer.status === 'ready' && (
             <span className="text-[11px]">
               {viewer.times.length} time step{viewer.times.length === 1 ? '' : 's'}
@@ -162,10 +169,18 @@ function ResultsTabInner() {
         </div>
       </div>
 
+      {screenshotError && <div role="alert" className="border-b px-3 py-2 text-xs text-destructive">{screenshotError}<button className="ml-2 rounded border px-2 py-1" onClick={() => void takeScreenshot()}>Retry screenshot</button></div>}
+      {(viewer.provenance || project.example) && <div className="border-b px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+        {project.example ? 'Bundled reference data · No new run or validation of your inputs.' : <>
+          Run {viewer.provenance?.runId ?? 'unrecorded'} · Input revision {viewer.provenance?.inputRevision?.slice(0, 12) ?? 'unavailable'} · Completion is not a physics-validation claim.
+          {viewer.provenance?.stale && <span className="ml-2 text-amber-500">Inputs have changed since this result was produced.</span>}
+        </>}
+      </div>}
+      {viewer.errorMessage && viewer.status !== 'error' && <div role="alert" className="border-b p-2 text-xs text-destructive">{viewer.errorMessage}</div>}
       <div className="flex min-h-0 flex-1">
-        <aside className="w-44 shrink-0 border-r bg-sidebar/30">
+        {pipelineOpen && <aside className="w-44 shrink-0 overflow-y-auto border-r bg-sidebar/30">
           <PipelineTree onAdd={viewer.status === 'ready' ? viewer.addDerivedItem : undefined} />
-        </aside>
+        </aside>}
 
         <div
           ref={viewportRef}
@@ -227,7 +242,7 @@ function ResultsTabInner() {
                 <p>Run the case, or convert an already-solved case with foamToVTK.</p>
                 <button
                   type="button"
-                  disabled={viewer.converting}
+                  disabled={viewer.converting || !executionAllowed || !!project.example}
                   onClick={viewer.convert}
                   className="pointer-events-auto rounded-sm border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
                 >
@@ -243,10 +258,10 @@ function ResultsTabInner() {
           )}
           {viewer.status === 'ready' && !viewer.hasTimeSeries && (
             <div className="absolute left-2 top-2 flex items-center gap-2 rounded-sm border bg-background/90 px-2 py-1 text-[11px] text-muted-foreground">
-              <span>Only the initial time is converted.</span>
+              <span>One saved time is available.</span>
               <button
                 type="button"
-                disabled={viewer.converting}
+                disabled={viewer.converting || !executionAllowed || !!project.example}
                 onClick={viewer.convert}
                 className="rounded-sm border px-1.5 py-0.5 hover:bg-accent disabled:opacity-50"
               >
@@ -255,8 +270,8 @@ function ResultsTabInner() {
             </div>
           )}
           {viewer.status === 'error' && !viewer.contextLost && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-xs text-destructive">
-              {viewer.errorMessage}
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-xs text-destructive">
+              <p>{viewer.errorMessage}</p><button className="rounded border px-3 py-1.5" onClick={viewer.reload}>Retry loading results</button>
             </div>
           )}
           {viewer.contextLost && <ViewerUnavailable onRetry={viewer.retryContext} />}
@@ -271,9 +286,9 @@ function ResultsTabInner() {
           </div>
         )}
 
-        <aside className="w-56 shrink-0 border-l bg-sidebar/30">
+        {propertiesOpen && <aside className="w-56 shrink-0 overflow-y-auto border-l bg-sidebar/30">
           <PropertiesPanel fields={viewer.fields} bounds={viewer.bounds} />
-        </aside>
+        </aside>}
       </div>
 
       <TimeTransport times={viewer.times} />

@@ -4,7 +4,7 @@
  * No Docker. No OpenFOAM execution. Just LLM file generation + static validation.
  * Expected runtime: ~10 seconds (one API call, cached for subsequent tests).
  *
- * Prerequisites: the `claude` CLI must be installed and authenticated.
+ * Prerequisites: the selected provider must be authenticated (Codex CLI uses codex login).
  *
  * TDD: These tests are written before the implementation.
  * They must fail with "cannot find module" until core/agent/FileGenerator.ts exists.

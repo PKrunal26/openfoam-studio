@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useEditorStore, isDirty } from '@/store/useEditorStore'
 import { useProjectStore } from '@/store/useProjectStore'
 import * as api from '@/lib/api'
 import { parseDict, setValue, type DictEntry } from '@/lib/dictParser'
@@ -50,13 +51,32 @@ interface FileSection {
   entries: DictEntry[]
 }
 
-type EditMap = Record<string, Record<string, string>>
+const UNITS: Record<string, string> = { nu: 'm²/s', rho: 'kg/m³', startTime: 's', endTime: 's', deltaT: 's' }
+const ENUMS: Record<string, string[]> = {
+  startFrom: ['startTime', 'firstTime', 'latestTime'], stopAt: ['endTime', 'writeNow', 'noWriteNow', 'nextWrite'],
+  writeControl: ['timeStep', 'runTime', 'adjustableRunTime', 'cpuTime', 'clockTime'],
+  writeFormat: ['ascii', 'binary'], writeCompression: ['on', 'off', 'compressed', 'uncompressed'],
+  runTimeModifiable: ['true', 'false', 'yes', 'no', 'on', 'off'], simulationType: ['laminar', 'RAS', 'LES'],
+}
+export function validateParameter(key: string, value: string): string | null {
+  if (!value.trim() || /[;{}\n\r]/.test(value)) return 'Enter one dictionary value without delimiters.'
+  if (ENUMS[key] && !ENUMS[key].includes(value)) return `Choose ${ENUMS[key].join(', ')}.`
+  if (['nu', 'rho', 'deltaT', 'writeInterval', 'startTime', 'endTime', 'purgeWrite', 'writePrecision', 'timePrecision'].includes(key)) {
+    const number = Number(value)
+    if (!Number.isFinite(number)) return 'Enter a finite number.'
+    if (['nu', 'rho', 'deltaT', 'writeInterval'].includes(key) && number <= 0) return 'Must be greater than zero.'
+    if (['startTime', 'endTime', 'purgeWrite'].includes(key) && number < 0) return 'Must be zero or greater.'
+    if (['purgeWrite', 'writePrecision', 'timePrecision'].includes(key) && !Number.isInteger(number)) return 'Enter a whole number.'
+  }
+  return null
+}
 
 export function ParametersTab() {
   const project = useProjectStore((s) => s.project)
   const files = useProjectStore((s) => s.files)
   const [sections, setSections] = useState<FileSection[]>([])
-  const [edits, setEdits] = useState<EditMap>({})
+  const tabs = useEditorStore((s) => s.tabs)
+  const [validationError, setValidationError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,7 +101,7 @@ export function ParametersTab() {
       .then((results) => {
         if (cancelled) return
         setSections(results.filter((s) => s.entries.length > 0))
-        setEdits({})
+
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err))
@@ -90,7 +110,7 @@ export function ParametersTab() {
     return () => {
       cancelled = true
     }
-  }, [project?.id, candidatePaths.join('|')])
+  }, [project?.id, files])
 
   if (!project) {
     return (
@@ -110,45 +130,32 @@ export function ParametersTab() {
   }
 
   const onChange = (relPath: string, key: string, value: string) => {
-    setEdits((prev) => ({
-      ...prev,
-      [relPath]: { ...(prev[relPath] ?? {}), [key]: value },
-    }))
+    const section = sections.find((s) => s.relPath === relPath)
+    if (!section || saving) return
+    const invalid = validateParameter(key, value)
+    setValidationError(invalid ? `${FRIENDLY_LABELS[key] ?? key}: ${invalid}` : null)
+    const id = `case:${relPath}`
+    const existing = useEditorStore.getState().tabs.find((t) => t.id === id)
+    const text = existing?.content ?? section.text
+    const content = invalid ? text : setValue(text, key, value)
+    const parameterDrafts = { ...existing?.parameterDrafts, [key]: value }
+    const validationError = Object.entries(parameterDrafts).map(([draftKey, draftValue]) => validateParameter(draftKey, draftValue)).find(Boolean) ?? null
+    if (existing) useEditorStore.setState((s) => ({ tabs: s.tabs.map((t) => t.id === id ? { ...t, content, parameterDrafts, validationError } : t) }))
+    else useEditorStore.setState((s) => ({ tabs: [...s.tabs, { id, kind: 'case', projectId: project.id, relPath, label: relPath.split('/').pop() ?? relPath, content, savedContent: section.text, parameterDrafts, validationError }] }))
   }
-
-  const dirtySections = sections.filter((s) => {
-    const e = edits[s.relPath]
-    return e && s.entries.some((entry) => e[entry.key] != null && e[entry.key] !== entry.value)
-  })
+  const dirtySections = sections.filter((s) => tabs.some((tab) => tab.relPath === s.relPath && isDirty(tab)))
   const anyDirty = dirtySections.length > 0
-
   const onSaveAll = async () => {
-    if (!project || !anyDirty) return
-    setSaving(true)
-    setError(null)
+    if (!anyDirty) return
+    if (validationError) { setError(validationError); return }
+    const invalid = dirtySections.flatMap((s) => parseDict(tabs.find((t) => t.relPath === s.relPath)?.content ?? s.text).entries.map((entry) => validateParameter(entry.key, entry.value)).filter(Boolean))[0]
+    if (invalid) { setError(invalid); return }
+    setSaving(true); setError(null)
     try {
-      const updated: FileSection[] = []
-      for (const s of dirtySections) {
-        const e = edits[s.relPath]
-        let next = s.text
-        for (const entry of s.entries) {
-          const newVal = e[entry.key]
-          if (newVal != null && newVal !== entry.value) {
-            next = setValue(next, entry.key, newVal)
-          }
-        }
-        await api.writeFile(project.id, s.relPath, next)
-        updated.push({ ...s, text: next, entries: parseDict(next).entries })
-      }
-      setSections((prev) =>
-        prev.map((sec) => updated.find((u) => u.relPath === sec.relPath) ?? sec),
-      )
-      setEdits({})
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
+      for (const s of dirtySections) await useEditorStore.getState().saveTab(project.id, `case:${s.relPath}`)
+      await useEditorStore.getState().reloadFiles(project.id)
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setSaving(false) }
   }
 
   return (
@@ -171,9 +178,9 @@ export function ParametersTab() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        {error && (
+        {(error || validationError) && (
           <div className="mx-auto mb-4 max-w-2xl rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error}
+            {error || validationError}
           </div>
         )}
 
@@ -182,7 +189,7 @@ export function ParametersTab() {
             No parameters yet. Generate the case files first.
           </div>
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-8">
+<div className="mx-auto flex max-w-2xl flex-col gap-8"><p className="text-xs leading-relaxed text-muted-foreground">Changes share the file editor buffers. Save before running. OpenFOAM dimension vectors stay in the file; units below describe recognized quantities. Changing solver or turbulence settings may require additional fields.</p>
             {sections.map((s) => {
               const title = SECTION_TITLES[s.relPath] ?? s.relPath
               return (
@@ -195,21 +202,23 @@ export function ParametersTab() {
                   </header>
 
                   <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-                    {s.entries.map((entry) => {
-                      const editVal = edits[s.relPath]?.[entry.key]
-                      const value = editVal ?? entry.value
-                      const changed = editVal != null && editVal !== entry.value
+                    {parseDict(tabs.find((tab) => tab.relPath === s.relPath)?.content ?? s.text).entries.map((entry) => {
+                      const value = tabs.find((tab) => tab.relPath === s.relPath)?.parameterDrafts?.[entry.key] ?? entry.value
+                      const original = s.entries.find((e) => e.key === entry.key)?.value
+                      const changed = value !== original
                       const label = FRIENDLY_LABELS[entry.key] ?? entry.key
                       return (
                         <label key={entry.key} className="flex flex-col gap-1">
                           <span className="text-[11px] text-muted-foreground">
                             {label}
-                            {entry.units && (
-                              <span className="ml-1 opacity-60">{entry.units}</span>
+                            {(UNITS[entry.key] || entry.units) && (
+                              <span className="ml-1 opacity-60">{UNITS[entry.key] ?? entry.units}</span>
                             )}
                           </span>
                           <input
                             type="text"
+                            disabled={saving}
+                            aria-invalid={!!validateParameter(entry.key, value)}
                             value={value}
                             onChange={(e) => onChange(s.relPath, entry.key, e.target.value)}
                             className={cn(

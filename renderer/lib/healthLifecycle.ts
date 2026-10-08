@@ -50,11 +50,11 @@ function unreachableResult(err: unknown): HealthResult {
     ok: false,
     checks: [
       {
-        name: 'docker',
-        label: 'Docker daemon',
+        name: 'backend',
+        label: 'Local application server',
         pass: false,
-        fix: `Health check could not complete (${detail}). Start Docker Desktop, or on Linux: sudo systemctl start docker`,
-        canAutoFix: true,
+        fix: `Health check could not complete (${detail}). Restart the application or local server, then retry`,
+        canAutoFix: false,
       },
     ],
   }

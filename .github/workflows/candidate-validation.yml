@@ -1,0 +1,48 @@
+name: Full candidate validation
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+permissions:
+  contents: read
+jobs:
+  stages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OFS_CONFIG_DIR: ${{ runner.temp }}/ofs-candidate-config
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Require generation credentials
+        run: test -n "$ANTHROPIC_API_KEY" || { echo 'Full candidate validation requires a configured API key; no stages are skipped.'; exit 1; }
+      - name: Prepare OpenFOAM image
+        run: docker pull microfluidica/openfoam:13
+      - name: Ordered stages (shell stops on first failure)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test:stage0
+          npm run test:stage1
+          npm run test:stage2
+          npm run test:stage3
+          npm run test:stage4
+          npm run test:stage5
+      - run: npm run test:unit
+      - run: npm run typecheck
+      - run: npm run build:renderer
+      - run: npm run build:server
+      - run: node scripts/verify-package.mjs
