@@ -1,0 +1,156 @@
+{
+  "id": "dam-break",
+  "order": 3,
+  "title": "Dam break",
+  "subtitle": "A collapsing water column, tracked with the volume-of-fluid method",
+  "summary": "A column of water is released in a tank, surges across the floor, hits an obstacle and sloshes back. Your first two-phase case: phase fraction, gravity, surface tension, setFields initialisation and adaptive time stepping.",
+  "difficulty": "Intermediate",
+  "analysisType": "Multiphase (VoF)",
+  "solver": "incompressibleVoF",
+  "dimension": "2D",
+  "tags": ["multiphase", "VoF", "transient", "free surface"],
+  "estimatedRuntime": "about 30 s",
+  "geometry": {
+    "name": "Tank with obstacle",
+    "description": "0.584 m × 0.584 m tank, open at the top, with a 24 mm × 48 mm obstacle on the floor (2D).",
+    "patches": [
+      { "name": "leftWall", "label": "Left wall", "kind": "wall" },
+      { "name": "rightWall", "label": "Right wall", "kind": "wall" },
+      { "name": "lowerWall", "label": "Floor and obstacle", "kind": "wall" },
+      { "name": "atmosphere", "label": "Atmosphere", "kind": "open" },
+      { "name": "frontAndBack", "label": "Front and back", "kind": "empty" }
+    ]
+  },
+  "params": [
+    { "id": "columnWidth", "label": "Water column width", "unit": "m", "type": "number", "default": 0.1461, "min": 0.03, "max": 0.28,
+      "help": "The column stands against the left wall. The obstacle starts at x = 0.292 m." },
+    { "id": "columnHeight", "label": "Water column height", "unit": "m", "type": "number", "default": 0.292, "min": 0.05, "max": 0.55 },
+    { "id": "rhoLiquid", "label": "Liquid density", "symbol": "ρ", "unit": "kg/m³", "type": "number", "default": 1000, "min": 100, "max": 3000 },
+    { "id": "nuLiquid", "label": "Liquid kinematic viscosity", "symbol": "ν", "unit": "m²/s", "type": "number", "default": 0.000001, "min": 0.0000001, "max": 0.01,
+      "help": "Water is 1e-6. Try 1e-3 for something like a thick oil." },
+    { "id": "sigma", "label": "Surface tension", "symbol": "σ", "unit": "N/m", "type": "number", "default": 0.07, "min": 0, "max": 0.5 },
+    { "id": "gravity", "label": "Gravity", "symbol": "g", "unit": "m/s²", "type": "number", "default": 9.81, "min": 0.5, "max": 30,
+      "help": "Acts in the −y direction. The Moon is 1.62, Mars 3.71." },
+    { "id": "endTime", "label": "End time", "unit": "s", "type": "number", "default": 1, "min": 0.1, "max": 3 },
+    { "id": "maxCo", "label": "Maximum Courant number", "type": "select", "default": 1,
+      "options": [
+        { "value": 0.25, "label": "0.25 (most accurate, slowest)" },
+        { "value": 0.5, "label": "0.5" },
+        { "value": 1, "label": "1 (reference)" }
+      ],
+      "help": "The solver shrinks the time step to stay below this limit." },
+    { "id": "compression", "label": "Interface compression", "type": "select", "default": 1,
+      "options": [
+        { "value": 0, "label": "0 (off: interface smears)" },
+        { "value": 1, "label": "1 (reference)" }
+      ],
+      "help": "Counteracts numerical diffusion to keep the water surface sharp." },
+    { "id": "refine", "label": "Mesh resolution", "type": "select", "default": 1,
+      "options": [
+        { "value": 0.5, "label": "Coarse (about 570 cells)" },
+        { "value": 1, "label": "Reference (about 2 300 cells)" },
+        { "value": 1.5, "label": "Fine (about 5 100 cells)" },
+        { "value": 2, "label": "Very fine (about 9 100 cells)" }
+      ] }
+  ],
+  "derived": [
+    { "id": "volume", "label": "Water area", "unit": "m²", "expr": "columnWidth * columnHeight", "digits": 4 },
+    { "id": "waveSpeed", "label": "Characteristic speed √(g h)", "unit": "m/s", "expr": "sqrt(gravity * columnHeight)", "digits": 3, "help": "The front of the collapsing column moves at roughly twice this speed." },
+    { "id": "writeEvery", "label": "Write interval", "unit": "s", "expr": "endTime / 20", "digits": 4, "help": "Twenty snapshots are saved per run." },
+    { "id": "nxLeft", "label": "Cells left of obstacle", "expr": "round(23 * refine)" },
+    { "id": "nxMid", "label": "Cells over obstacle", "expr": "max(2, round(4 * refine))" },
+    { "id": "nxRight", "label": "Cells right of obstacle", "expr": "round(19 * refine)" },
+    { "id": "nyLow", "label": "Cells up to obstacle top", "expr": "round(8 * refine)" },
+    { "id": "nyUp", "label": "Cells above obstacle", "expr": "round(42 * refine)" },
+    { "id": "cells", "label": "Total cells", "expr": "(nxLeft + nxRight) * nyLow + (nxLeft + nxMid + nxRight) * nyUp", "digits": 6 }
+  ],
+  "constraints": [
+    { "expr": "cells * endTime / maxCo <= 60000", "message": "This is too expensive for the classroom server. Shorten the end time, coarsen the mesh or allow a larger Courant number." }
+  ],
+  "sections": [
+    { "node": "model", "items": [
+      { "id": "gravityItem", "label": "Gravity", "icon": "model",
+        "description": "Gravity drives the whole flow. It is a uniform vector field stored in constant/g.",
+        "files": ["constant/g"],
+        "rows": [{ "label": "Direction", "value": "−y" }],
+        "params": ["gravity"], "derived": ["waveSpeed"] }
+    ] },
+    { "node": "materials", "items": [
+      { "id": "liquid", "label": "Water", "icon": "fluid",
+        "description": "The heavy phase (alpha.water = 1).",
+        "files": ["constant/physicalProperties.water"],
+        "params": ["rhoLiquid", "nuLiquid"] },
+      { "id": "gas", "label": "Air", "icon": "fluid",
+        "description": "The light phase (alpha.water = 0). Fixed in this tutorial.",
+        "files": ["constant/physicalProperties.air"],
+        "rows": [{ "label": "(ρ) Density", "value": "1 kg/m³" }, { "label": "(ν) Kinematic viscosity", "value": "1.48e-5 m²/s" }] },
+      { "id": "interface", "label": "Interface", "icon": "fluid",
+        "description": "Surface tension acts where the two phases meet.",
+        "files": ["constant/phaseProperties"],
+        "params": ["sigma"] }
+    ] },
+    { "node": "initialConditions", "items": [
+      { "id": "initial", "label": "Water column", "icon": "initial",
+        "description": "setFields fills a box against the left wall with water before the solver starts. Everything is at rest.",
+        "files": ["system/setFieldsDict", "0/alpha.water"],
+        "rows": [{ "label": "(U) Velocity", "value": "(0 0 0) m/s" }],
+        "params": ["columnWidth", "columnHeight"], "derived": ["volume"] }
+    ] },
+    { "node": "boundaryConditions", "items": [
+      { "id": "bcWalls", "label": "Tank walls", "icon": "wall", "patches": ["leftWall", "rightWall", "lowerWall"],
+        "description": "No-slip walls. fixedFluxPressure sets the pressure gradient so that no fluid crosses the wall under gravity.",
+        "files": ["0/U", "0/p_rgh", "0/alpha.water"],
+        "rows": [
+          { "label": "Velocity type", "value": "noSlip" },
+          { "label": "Pressure (p_rgh)", "value": "fixedFluxPressure" },
+          { "label": "Phase fraction", "value": "zeroGradient" }
+        ] },
+      { "id": "bcTop", "label": "Open top", "icon": "open", "patches": ["atmosphere"],
+        "description": "Open to the atmosphere: air may flow in or out, and only air enters.",
+        "files": ["0/U", "0/p_rgh", "0/alpha.water"],
+        "rows": [
+          { "label": "Velocity type", "value": "pressureInletOutletVelocity" },
+          { "label": "Pressure (p_rgh)", "value": "prghTotalPressure 0" },
+          { "label": "Phase fraction", "value": "inletOutlet (air)" }
+        ] },
+      { "id": "bcEmpty", "label": "Front and back", "icon": "empty", "patches": ["frontAndBack"],
+        "description": "Empty patches make the case two-dimensional.",
+        "rows": [{ "label": "Type", "value": "empty" }] }
+    ] },
+    { "node": "numerics", "items": [
+      { "id": "numerics", "label": "Numerics", "icon": "numerics",
+        "description": "The phase fraction is advected with MULES and an interface-compression scheme to keep it between 0 and 1 and the surface sharp.",
+        "files": ["system/fvSchemes", "system/fvSolution"],
+        "rows": [
+          { "label": "Time scheme", "value": "Euler" },
+          { "label": "Algorithm", "value": "PIMPLE, 3 pressure correctors" }
+        ],
+        "params": ["compression"] }
+    ] },
+    { "node": "simulationControl", "items": [
+      { "id": "control", "label": "Simulation control", "icon": "control",
+        "description": "The time step is adjusted automatically from the Courant number limit.",
+        "files": ["system/controlDict"],
+        "rows": [{ "label": "Time step", "value": "adaptive" }],
+        "params": ["endTime", "maxCo"], "derived": ["writeEvery"] }
+    ] },
+    { "node": "mesh", "items": [
+      { "id": "mesh", "label": "Mesh", "icon": "mesh",
+        "description": "Five blocks around the obstacle from blockMesh.",
+        "files": ["system/blockMeshDict"],
+        "rows": [{ "label": "Mesher", "value": "blockMesh (hexahedral)" }],
+        "params": ["refine"], "derived": ["cells"] }
+    ] }
+  ],
+  "run": { "maxWallSeconds": 900, "fields": ["alpha.water", "U", "p_rgh", "p"], "steady": false, "endTime": "endTime" },
+  "results": {
+    "defaultField": "alpha.water",
+    "fields": {
+      "alpha.water": { "label": "Water fraction", "unit": "–" },
+      "U": { "label": "Velocity", "unit": "m/s" },
+      "p_rgh": { "label": "Pressure minus hydrostatic", "unit": "Pa" },
+      "p": { "label": "Pressure", "unit": "Pa" }
+    },
+    "view": "+Z"
+  }
+}

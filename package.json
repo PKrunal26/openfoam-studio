@@ -24,9 +24,16 @@
     "test:postprocess": "vitest run tests/unit/postprocess",
     "test:unit": "vitest run tests/unit",
     "scrape:docs": "tsx scripts/scrape-openfoam-docs.ts",
-    "typecheck": "npm run typecheck:core && npm run typecheck:server && npm run typecheck:renderer",
+    "typecheck": "npm run typecheck:core && npm run typecheck:server && npm run typecheck:renderer && npm run typecheck:classroom",
     "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
-    "typecheck:server": "tsc -p tsconfig.server.json --noEmit"
+    "typecheck:server": "tsc -p tsconfig.server.json --noEmit",
+    "classroom:dev": "concurrently -n api,web -c green,blue \"tsx watch classroom/server/server.ts\" \"vite -c vite.classroom.config.ts\"",
+    "classroom:build": "vite build -c vite.classroom.config.ts && node scripts/compile-classroom.mjs",
+    "classroom:start": "node classroom/dist/server.js",
+    "classroom:serve": "tsx classroom/server/server.ts",
+    "classroom:bake": "tsx classroom/server/bake.ts",
+    "test:classroom": "vitest run tests/unit/classroom",
+    "typecheck:classroom": "tsc -p tsconfig.classroom.json --noEmit && tsc -p tsconfig.classroom-web.json --noEmit"
   },
   "keywords": [
     "openfoam",
@@ -114,6 +121,7 @@
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@anthropic-ai/sdk": "^0.86.1",
+    "@fontsource/lato": "^5.3.0",
     "@kitware/vtk.js": "^35.11.0",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.2.4",

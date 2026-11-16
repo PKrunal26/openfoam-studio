@@ -46,6 +46,8 @@ export interface ItemDisplayProps {
   /** One value per point; null renders the solid color instead. */
   scalars: Float32Array | null
   solidColor?: [number, number, number]
+  /** Optional shading override; defaults to vtk.js' own (ambient 0, diffuse 1). */
+  lighting?: { ambient: number; diffuse: number }
 }
 
 interface EngineItem {
@@ -267,6 +269,10 @@ export class ResultsEngine {
     const prop = actor.getProperty()
     prop.setOpacity(props.opacity)
     prop.setLineWidth(2)
+    if (props.lighting) {
+      prop.setAmbient(props.lighting.ambient)
+      prop.setDiffuse(props.lighting.diffuse)
+    }
 
     if (item.kind === 'glyph') {
       // Representation/edges are meaningless for glyph imposters.
@@ -345,12 +351,13 @@ export class ResultsEngine {
     this.scalarBar.setVisibility(true)
   }
 
-  setBackground(mode: 'dark' | 'light'): void {
+  /** `mode` may also be an explicit RGB triple (0–1) for embedders with their own theme. */
+  setBackground(mode: 'dark' | 'light' | [number, number, number]): void {
     if (!this.grw) return
-    const bg = mode === 'dark' ? DARK_BG : LIGHT_BG
+    const bg = Array.isArray(mode) ? mode : mode === 'dark' ? DARK_BG : LIGHT_BG
     this.grw.getRenderer().setBackground(bg[0], bg[1], bg[2])
     // Keep the legend legible on both backgrounds.
-    const text = mode === 'dark' ? 'white' : 'black'
+    const text = bg[0] + bg[1] + bg[2] < 1.5 ? 'white' : 'black'
     this.scalarBar?.setAxisTextStyle({ fontColor: text })
     this.scalarBar?.setTickTextStyle({ fontColor: text })
   }
@@ -407,6 +414,46 @@ export class ResultsEngine {
     const hit = positions[0]
     picker.delete()
     return hit ? [hit[0]!, hit[1]!, hit[2]!] : null
+  }
+
+  /**
+   * Look along `direction` (from the camera toward the scene is its negative)
+   * with the given up vector, then fit the scene. Presets cover the z-up
+   * convention; this serves y-up cases.
+   */
+  setView(direction: [number, number, number], up: [number, number, number]): void {
+    if (!this.grw) return
+    const renderer = this.grw.getRenderer()
+    renderer.resetCamera()
+    const cam = renderer.getActiveCamera()
+    const fp = cam.getFocalPoint()
+    const d = cam.getDistance()
+    const n = Math.hypot(direction[0], direction[1], direction[2]) || 1
+    cam.setPosition(fp[0] + (direction[0] / n) * d, fp[1] + (direction[1] / n) * d, fp[2] + (direction[2] / n) * d)
+    cam.setViewUp(up[0], up[1], up[2])
+    renderer.resetCamera()
+    this.fitToViewport()
+    renderer.resetCameraClippingRange()
+    this.render()
+  }
+
+  /**
+   * Shift the projected image without moving the camera, in viewport
+   * half-widths (positive x moves the scene right). Lets a host keep the model
+   * centred in the part of the viewport its own panels leave free.
+   */
+  setImageShift(x: number, y: number): void {
+    if (!this.grw) return
+    this.grw.getRenderer().getActiveCamera().setWindowCenter(-x, -y)
+    this.render()
+  }
+
+  /** Scale the fitted view (>1 zooms in). */
+  zoom(factor: number): void {
+    if (!this.grw) return
+    this.grw.getRenderer().getActiveCamera().zoom(factor)
+    this.grw.getRenderer().resetCameraClippingRange()
+    this.render()
   }
 
   /** The viewport camera — used for two-viewport camera sync. */

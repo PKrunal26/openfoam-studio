@@ -28,3 +28,8 @@ demo/server.compiled.js
 # Working launch docs (not product)
 REDDIT_POST.md
 RELEASE_CHECKLIST.md
+
+# Classroom server runtime data (accounts, results cache)
+classroom/data/
+classroom/web/dist/
+classroom/dist/

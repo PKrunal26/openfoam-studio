@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.renderer.json",
+  "compilerOptions": {
+    "paths": {
+      "@c/*": ["classroom/web/src/*"],
+      "@/*": ["renderer/*"]
+    }
+  },
+  "include": ["classroom/web/src/**/*.ts", "classroom/web/src/**/*.tsx", "renderer/vite-env.d.ts", "renderer/lib/vtk/**/*.ts"]
+}

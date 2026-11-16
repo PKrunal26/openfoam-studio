@@ -1,0 +1,90 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      blockMeshDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// T-junction of two square ducts (50 mm x 50 mm).
+// Main duct along x from -0.2 m to 0.4 m; the branch joins from above at x = 0 ... 0.05 m.
+
+convertToMeters 1;
+
+vertices
+(
+    (-0.2  0    0)     // 0
+    ( 0    0    0)     // 1
+    ( 0.05 0    0)     // 2
+    ( 0.4  0    0)     // 3
+    (-0.2  0.05 0)     // 4
+    ( 0    0.05 0)     // 5
+    ( 0.05 0.05 0)     // 6
+    ( 0.4  0.05 0)     // 7
+    ( 0    0.25 0)     // 8
+    ( 0.05 0.25 0)     // 9
+
+    (-0.2  0    0.05)  // 10
+    ( 0    0    0.05)  // 11
+    ( 0.05 0    0.05)  // 12
+    ( 0.4  0    0.05)  // 13
+    (-0.2  0.05 0.05)  // 14
+    ( 0    0.05 0.05)  // 15
+    ( 0.05 0.05 0.05)  // 16
+    ( 0.4  0.05 0.05)  // 17
+    ( 0    0.25 0.05)  // 18
+    ( 0.05 0.25 0.05)  // 19
+);
+
+blocks
+(
+    hex (0 1 5 4 10 11 15 14)  ({{nUp}} {{nD}} {{nD}}) simpleGrading (1 1 1)     // main duct, upstream
+    hex (1 2 6 5 11 12 16 15)  ({{nD}} {{nD}} {{nD}}) simpleGrading (1 1 1)      // junction
+    hex (2 3 7 6 12 13 17 16)  ({{nDown}} {{nD}} {{nD}}) simpleGrading (1 1 1)   // main duct, downstream
+    hex (5 6 9 8 15 16 19 18)  ({{nD}} {{nBranch}} {{nD}}) simpleGrading (1 1 1) // side branch
+);
+
+// Every face not listed below becomes part of the duct walls.
+defaultPatch
+{
+    name walls;
+    type wall;
+}
+
+boundary
+(
+    inletMain
+    {
+        type patch;
+        faces
+        (
+            (0 10 14 4)
+        );
+    }
+    inletBranch
+    {
+        type patch;
+        faces
+        (
+            (8 18 19 9)
+        );
+    }
+    outlet
+    {
+        type patch;
+        faces
+        (
+            (3 7 17 13)
+        );
+    }
+);
+
+// ************************************************************************* //

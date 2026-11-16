@@ -1,0 +1,153 @@
+{
+  "id": "t-junction",
+  "order": 4,
+  "title": "Pipe junction flow",
+  "subtitle": "Two air streams merging in a 3D T-junction",
+  "summary": "A side branch feeds air into a main duct. The two streams collide, the branch flow separates at the downstream corner, and the mixed flow leaves through a pressure outlet. A fully three-dimensional steady RANS case with two velocity inlets.",
+  "difficulty": "Intermediate",
+  "analysisType": "Incompressible",
+  "solver": "incompressibleFluid",
+  "dimension": "3D",
+  "tags": ["3D", "RANS", "steady", "internal flow"],
+  "estimatedRuntime": "about 40 s",
+  "geometry": {
+    "name": "Duct junction",
+    "description": "Square ducts, 50 mm × 50 mm. Main duct 0.6 m long; the 0.2 m branch joins from above.",
+    "patches": [
+      { "name": "inletMain", "label": "Main inlet", "kind": "inlet" },
+      { "name": "inletBranch", "label": "Branch inlet", "kind": "inlet" },
+      { "name": "outlet", "label": "Outlet", "kind": "outlet" },
+      { "name": "walls", "label": "Duct walls", "kind": "wall" }
+    ]
+  },
+  "params": [
+    { "id": "Umain", "label": "Main inlet velocity", "symbol": "U", "unit": "m/s", "type": "number", "default": 2, "min": 0.2, "max": 20 },
+    { "id": "Ubranch", "label": "Branch inlet velocity", "symbol": "U", "unit": "m/s", "type": "number", "default": 1.5, "min": 0, "max": 20,
+      "help": "Directed down the branch, into the main duct. Set 0 to close the branch." },
+    { "id": "intensity", "label": "Turbulence intensity", "symbol": "I", "unit": "%", "type": "number", "default": 5, "min": 0.5, "max": 20 },
+    { "id": "nu", "label": "Kinematic viscosity", "symbol": "ν", "unit": "m²/s", "type": "number", "default": 0.0000153, "min": 0.000001, "max": 0.001,
+      "help": "From μ = 1.8e-5 Pa·s and ρ = 1.18 kg/m³ for air." },
+    { "id": "model", "label": "Turbulence model", "type": "select", "default": "kEpsilon",
+      "options": [
+        { "value": "kEpsilon", "label": "k-epsilon (standard)" },
+        { "value": "realizableKE", "label": "Realizable k-epsilon" },
+        { "value": "kOmegaSST", "label": "k-omega SST" }
+      ] },
+    { "id": "convection", "label": "Velocity convection scheme", "type": "select", "default": "linearUpwind grad(U)",
+      "options": [
+        { "value": "linearUpwind grad(U)", "label": "linearUpwind (2nd order)" },
+        { "value": "upwind", "label": "upwind (1st order, diffusive)" }
+      ] },
+    { "id": "relax", "label": "Relaxation factor", "type": "number", "default": 0.9, "min": 0.2, "max": 0.98 },
+    { "id": "tolerance", "label": "Residual target", "type": "select", "default": 0.001,
+      "options": [
+        { "value": 0.001, "label": "1e-3 (reference)" },
+        { "value": 0.0001, "label": "1e-4 (tight)" }
+      ] },
+    { "id": "iterations", "label": "Maximum iterations", "type": "number", "integer": true, "default": 600, "min": 50, "max": 2000 },
+    { "id": "refine", "label": "Mesh resolution", "type": "select", "default": 1,
+      "options": [
+        { "value": 0.75, "label": "Coarse (6 cells across, 3 500 cells)" },
+        { "value": 1, "label": "Reference (8 cells across, 8 200 cells)" },
+        { "value": 1.5, "label": "Fine (12 cells across, 27 600 cells)" }
+      ] }
+  ],
+  "derived": [
+    { "id": "Re", "label": "Reynolds number (main duct)", "symbol": "Re", "expr": "Umain * 0.05 / nu", "digits": 4, "help": "Re = U D / ν with D = 50 mm." },
+    { "id": "ratio", "label": "Branch-to-main flow ratio", "expr": "Ubranch / Umain", "digits": 3 },
+    { "id": "Uout", "label": "Mean outlet velocity", "unit": "m/s", "expr": "Umain + Ubranch", "digits": 4, "help": "Mass conservation: both ducts have the same cross-section." },
+    { "id": "kMain", "label": "k at main inlet", "unit": "m²/s²", "expr": "1.5 * (Umain * intensity / 100)^2", "digits": 4 },
+    { "id": "kBranch", "label": "k at branch inlet", "unit": "m²/s²", "expr": "max(1e-8, 1.5 * (Ubranch * intensity / 100)^2)", "digits": 4 },
+    { "id": "epsMain", "label": "ε at main inlet", "unit": "m²/s³", "expr": "0.09^0.75 * kMain^1.5 / 0.0035", "digits": 4 },
+    { "id": "epsBranch", "label": "ε at branch inlet", "unit": "m²/s³", "expr": "max(1e-10, 0.09^0.75 * kBranch^1.5 / 0.0035)", "digits": 4 },
+    { "id": "omegaMain", "label": "ω at main inlet", "unit": "1/s", "expr": "sqrt(kMain) / (0.09^0.25 * 0.0035)", "digits": 4 },
+    { "id": "omegaBranch", "label": "ω at branch inlet", "unit": "1/s", "expr": "max(0.01, sqrt(kBranch) / (0.09^0.25 * 0.0035))", "digits": 4 },
+    { "id": "nD", "label": "Cells across the duct", "expr": "round(8 * refine)" },
+    { "id": "nUp", "label": "Cells upstream", "expr": "4 * nD" },
+    { "id": "nDown", "label": "Cells downstream", "expr": "7 * nD" },
+    { "id": "nBranch", "label": "Cells along branch", "expr": "4 * nD" },
+    { "id": "cells", "label": "Total cells", "expr": "16 * nD^3", "digits": 6 }
+  ],
+  "constraints": [
+    { "expr": "cells * iterations <= 30000000", "message": "This mesh and iteration count is too expensive for the classroom server. Lower the maximum iterations or coarsen the mesh." }
+  ],
+  "sections": [
+    { "node": "model", "items": [
+      { "id": "turbulence", "label": "Turbulence", "icon": "model",
+        "description": "Steady RANS with wall functions.",
+        "files": ["constant/momentumTransport"],
+        "rows": [{ "label": "Simulation type", "value": "RAS (steady RANS)" }],
+        "params": ["model"] }
+    ] },
+    { "node": "materials", "items": [
+      { "id": "fluid", "label": "Air", "icon": "fluid",
+        "description": "Newtonian fluid with constant kinematic viscosity.",
+        "files": ["constant/physicalProperties"],
+        "rows": [{ "label": "Viscosity model", "value": "Newtonian (constant)" }],
+        "params": ["nu"], "derived": ["Re"] }
+    ] },
+    { "node": "initialConditions", "items": [
+      { "id": "initial", "label": "Initial conditions", "icon": "initial",
+        "description": "The starting guess for the steady iteration.",
+        "files": ["0/U", "0/p", "0/k", "0/epsilon"],
+        "rows": [
+          { "label": "(U) Velocity", "value": "(0 0 0) m/s" },
+          { "label": "(p) Kinematic pressure", "value": "0 m²/s²" },
+          { "label": "(k, ε, ω)", "value": "main-inlet values" }
+        ] }
+    ] },
+    { "node": "boundaryConditions", "items": [
+      { "id": "bcMain", "label": "Velocity inlet 1", "icon": "inlet", "patches": ["inletMain"],
+        "description": "Uniform velocity into the main duct (+x).",
+        "files": ["0/U", "0/k", "0/epsilon", "0/omega"],
+        "rows": [{ "label": "Velocity type", "value": "fixedValue" }, { "label": "Pressure type", "value": "zeroGradient" }],
+        "params": ["Umain", "intensity"], "derived": ["kMain", "epsMain"] },
+      { "id": "bcBranch", "label": "Velocity inlet 2", "icon": "inlet", "patches": ["inletBranch"],
+        "description": "Uniform velocity down the side branch (−y).",
+        "files": ["0/U", "0/k", "0/epsilon", "0/omega"],
+        "rows": [{ "label": "Velocity type", "value": "fixedValue" }, { "label": "Pressure type", "value": "zeroGradient" }],
+        "params": ["Ubranch"], "derived": ["ratio", "kBranch", "epsBranch"] },
+      { "id": "bcOutlet", "label": "Pressure outlet", "icon": "outlet", "patches": ["outlet"],
+        "description": "Fixed static pressure at the end of the main duct.",
+        "files": ["0/U", "0/p"],
+        "rows": [{ "label": "Pressure type", "value": "fixedValue 0" }, { "label": "Velocity type", "value": "zeroGradient" }],
+        "derived": ["Uout"] },
+      { "id": "bcWalls", "label": "Walls", "icon": "wall", "patches": ["walls"],
+        "description": "All duct walls: no-slip with wall functions.",
+        "files": ["0/U", "0/k", "0/epsilon", "0/omega", "0/nut"],
+        "rows": [{ "label": "Velocity type", "value": "noSlip" }, { "label": "Turbulence", "value": "wall functions" }] }
+    ] },
+    { "node": "numerics", "items": [
+      { "id": "numerics", "label": "Numerics", "icon": "numerics",
+        "description": "Steady-state SIMPLE(C) pressure-velocity coupling with under-relaxation.",
+        "files": ["system/fvSchemes", "system/fvSolution"],
+        "rows": [{ "label": "Time scheme", "value": "steadyState" }, { "label": "Algorithm", "value": "SIMPLEC (consistent yes)" }],
+        "params": ["convection", "relax", "tolerance"] }
+    ] },
+    { "node": "simulationControl", "items": [
+      { "id": "control", "label": "Simulation control", "icon": "control",
+        "description": "In a steady case, each \"time step\" is one SIMPLE iteration.",
+        "files": ["system/controlDict"],
+        "params": ["iterations"] }
+    ] },
+    { "node": "mesh", "items": [
+      { "id": "mesh", "label": "Mesh", "icon": "mesh",
+        "description": "Four hexahedral blocks from blockMesh with cubic cells.",
+        "files": ["system/blockMeshDict"],
+        "rows": [{ "label": "Mesher", "value": "blockMesh (hexahedral)" }],
+        "params": ["refine"], "derived": ["cells"] }
+    ] }
+  ],
+  "run": { "maxWallSeconds": 900, "fields": ["U", "p", "k", "nut"], "steady": true, "endTime": "iterations" },
+  "results": {
+    "defaultField": "U",
+    "fields": {
+      "U": { "label": "Velocity", "unit": "m/s" },
+      "p": { "label": "Kinematic pressure", "unit": "m²/s²" },
+      "k": { "label": "Turbulent kinetic energy", "unit": "m²/s²" },
+      "nut": { "label": "Turbulent viscosity", "unit": "m²/s" }
+    },
+    "view": "iso",
+    "slice": { "normal": [0, 0, 1], "origin": [0.1, 0.1, 0.025] }
+  }
+}

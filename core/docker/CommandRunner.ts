@@ -74,6 +74,12 @@ export interface RunDockerCommandOptions {
   signal?: AbortSignal
   timeoutMs?: number
   jobId?: string
+  /**
+   * Run as this "uid:gid" instead of the image default. Hosted (Linux) servers
+   * that are not root pass their own ids so files the solver writes into the
+   * bind mount stay removable by the server.
+   */
+  user?: string
 }
 
 function shellEscape(value: string): string {
@@ -109,11 +115,13 @@ export async function runDockerCommand(
   })
   if (!ALLOWED_DOCKER_COMMANDS.has(command)) throw new Error(`Docker command is not allowlisted: ${command}`)
   assertAllowedCommandArgs(command, args)
+  if (options.user !== undefined && !/^\d{1,10}:\d{1,10}$/.test(options.user)) throw new Error('Invalid container user')
   signal.throwIfAborted()
   assertCaseExecutionPolicy(caseDir)
   const pending = docker.createContainer({
     Image: OPENFOAM_IMAGE,
     Cmd: ['tail', '-f', '/dev/null'],
+    ...(options.user ? { User: options.user } : {}),
     Labels: { 'org.openfoam-studio.owned': 'true', 'org.openfoam-studio.instance': INSTANCE_ID,
       'org.openfoam-studio.job': options.jobId ?? randomUUID() },
     HostConfig: {
