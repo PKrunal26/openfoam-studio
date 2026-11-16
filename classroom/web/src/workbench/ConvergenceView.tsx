@@ -3,7 +3,8 @@ import { api, isActive, type Convergence, type RunView } from '@c/api'
 import { useWorkbench } from '@c/store'
 import { Spinner, cn, formatNumber } from '@c/ui/primitives'
 
-const COLORS = ['#1976d2', '#e4572e', '#2e9e5b', '#8e44ad', '#d39e00', '#00a3a3', '#c2185b', '#5d6d7e']
+// Viridis steps first, then two warm hues for cases with more equations.
+const COLORS = ['#440154', '#21918c', '#5ec962', '#3b528b', '#d9a400', '#c4352b', '#8a6fb0', '#68777c']
 
 interface Series { name: string; color: string; values: (number | null)[] }
 
@@ -87,21 +88,21 @@ function Chart({ title, x, series, log, xLabel, yLabel, refLine, settled }: {
   }
 
   return (
-    <div className="panel p-4">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h3 className="text-[16.5px] font-bold">{title}</h3>
-        <div className="flex flex-wrap gap-1.5">
+    <section className="[section+&]:border-t [section+&]:pt-7">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+        <h3 className="t-title text-[17px]">{title}</h3>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
           {series.map((entry) => {
             const hidden = off.includes(entry.name)
             return (
               <button
                 key={entry.name} type="button" aria-pressed={!hidden} title={hidden ? `Show ${entry.name}` : `Hide ${entry.name}`}
-                className={cn('flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[13px]', hidden ? 'text-[#a3acb5]' : 'bg-white')}
+                className={cn('flex h-6 items-center gap-1.5 text-[12.5px]', hidden ? 'text-ink-4 line-through' : 'text-ink-2 hover:text-ink')}
                 onClick={() => setOff((current) => hidden ? current.filter((name) => name !== entry.name) : [...current, entry.name])}
               >
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: hidden ? '#c5cdd5' : entry.color }} />
+                <span className="h-2.5 w-2.5" style={{ background: hidden ? 'var(--line-strong)' : entry.color }} />
                 {entry.name}
-                {hover !== null && !hidden && entry.values[hover] != null && <span className="tabular-nums text-muted-foreground">{formatNumber(entry.values[hover]!, 3)}</span>}
+                {hover !== null && !hidden && entry.values[hover] != null && <span className="t-mono text-ink-3">{formatNumber(entry.values[hover]!, 3)}</span>}
               </button>
             )
           })}
@@ -111,35 +112,35 @@ function Chart({ title, x, series, log, xLabel, yLabel, refLine, settled }: {
         <svg width={width} height={height} onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label={title}>
           {scale.yTicks.map((tick) => (
             <g key={tick}>
-              <line x1={margin.left} x2={margin.left + innerW} y1={scale.sy(tick)} y2={scale.sy(tick)} stroke="#e6eaee" />
-              <text x={margin.left - 8} y={scale.sy(tick) + 4} textAnchor="end" fontSize="12" fill="#66727f">{log ? `1e${Math.round(Math.log10(tick))}` : formatNumber(tick, 3)}</text>
+              <line x1={margin.left} x2={margin.left + innerW} y1={scale.sy(tick)} y2={scale.sy(tick)} stroke="var(--line)" />
+              <text x={margin.left - 8} y={scale.sy(tick) + 4} textAnchor="end" fontSize="11" fontFamily="var(--font-mono)" fill="var(--ink-3)">{log ? `1e${Math.round(Math.log10(tick))}` : formatNumber(tick, 3)}</text>
             </g>
           ))}
           {scale.xTicks.map((tick) => (
             <g key={tick}>
-              <line x1={scale.sx(tick)} x2={scale.sx(tick)} y1={margin.top + innerH} y2={margin.top + innerH + 5} stroke="#aab4be" />
-              <text x={scale.sx(tick)} y={margin.top + innerH + 19} textAnchor="middle" fontSize="12" fill="#66727f">{formatNumber(tick, 4)}</text>
+              <line x1={scale.sx(tick)} x2={scale.sx(tick)} y1={margin.top + innerH} y2={margin.top + innerH + 5} stroke="var(--line-strong)" />
+              <text x={scale.sx(tick)} y={margin.top + innerH + 19} textAnchor="middle" fontSize="11" fontFamily="var(--font-mono)" fill="var(--ink-3)">{formatNumber(tick, 4)}</text>
             </g>
           ))}
-          <rect x={margin.left} y={margin.top} width={innerW} height={innerH} fill="none" stroke="#cfd6dd" />
+          <rect x={margin.left} y={margin.top} width={innerW} height={innerH} fill="none" stroke="var(--line-strong)" />
           {refLine && !log && refLine.value <= scale.hi && (
             <g>
-              <line x1={margin.left} x2={margin.left + innerW} y1={scale.sy(refLine.value)} y2={scale.sy(refLine.value)} stroke="#cf3a3a" strokeDasharray="5 4" />
-              <text x={margin.left + innerW - 6} y={scale.sy(refLine.value) - 5} textAnchor="end" fontSize="12" fill="#cf3a3a">{refLine.label}</text>
+              <line x1={margin.left} x2={margin.left + innerW} y1={scale.sy(refLine.value)} y2={scale.sy(refLine.value)} stroke="var(--bad)" strokeDasharray="5 4" />
+              <text x={margin.left + innerW - 6} y={scale.sy(refLine.value) - 5} textAnchor="end" fontSize="11" fontFamily="var(--font-mono)" fill="var(--bad)">{refLine.label}</text>
             </g>
           )}
-          {shown.map((entry) => <path key={entry.name} d={path(entry.values)} fill="none" stroke={entry.color} strokeWidth="1.8" strokeLinejoin="round" />)}
+          {shown.map((entry) => <path key={entry.name} d={path(entry.values)} fill="none" stroke={entry.color} strokeWidth="1.6" strokeLinejoin="round" />)}
           {hover !== null && x[hover] !== undefined && (
             <g>
-              <line x1={scale.sx(x[hover]!)} x2={scale.sx(x[hover]!)} y1={margin.top} y2={margin.top + innerH} stroke="#66727f" strokeDasharray="3 3" />
-              <text x={Math.min(margin.left + innerW - 4, scale.sx(x[hover]!) + 6)} y={margin.top + 14} fontSize="12" fill="#232a33" textAnchor={scale.sx(x[hover]!) > margin.left + innerW - 90 ? 'end' : 'start'}>{xLabel} {formatNumber(x[hover]!, 5)}</text>
+              <line x1={scale.sx(x[hover]!)} x2={scale.sx(x[hover]!)} y1={margin.top} y2={margin.top + innerH} stroke="var(--ink-3)" strokeDasharray="3 3" />
+              <text x={Math.min(margin.left + innerW - 4, scale.sx(x[hover]!) + 6)} y={margin.top + 14} fontSize="11" fontFamily="var(--font-mono)" fill="var(--ink)" textAnchor={scale.sx(x[hover]!) > margin.left + innerW - 90 ? 'end' : 'start'}>{xLabel} {formatNumber(x[hover]!, 5)}</text>
             </g>
           )}
-          <text x={margin.left + innerW / 2} y={height - 4} textAnchor="middle" fontSize="12.5" fill="#4b5661">{xLabel}</text>
-          <text transform={`translate(14 ${margin.top + innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize="12.5" fill="#4b5661">{yLabel}</text>
+          <text x={margin.left + innerW / 2} y={height - 4} textAnchor="middle" fontSize="11.5" fill="var(--ink-3)">{xLabel}</text>
+          <text transform={`translate(14 ${margin.top + innerH / 2}) rotate(-90)`} textAnchor="middle" fontSize="11.5" fill="var(--ink-3)">{yLabel}</text>
         </svg>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -168,29 +169,23 @@ export function ConvergenceView({ run }: { run: RunView }) {
   const hasCourant = !!data?.courantMax.some((value) => value !== null)
 
   return (
-    <div className="h-full overflow-y-auto p-5">
-      <div className="mx-auto max-w-[1100px] space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-[21px] font-bold">Convergence plots</h2>
-            <p className="text-[14px] text-muted-foreground">
-              {run.isReference ? 'Run 1 · Reference' : run.label}
-              {data ? ` · ${data.steps.toLocaleString()} ${steady ? 'iterations' : 'time steps'}` : ''}
-              {run.result?.converged ? ' · stopped early: residual targets reached' : ''}
-            </p>
-          </div>
-          {(active || data?.live) && <span className="flex items-center gap-2 text-[14px] text-accent-foreground"><Spinner size={15} /> Updating live</span>}
-        </div>
-        {error && <div className="panel p-4 text-danger">{error}</div>}
-        {!data && !error && <div className="panel flex items-center gap-3 p-6 text-muted-foreground"><Spinner /> Loading convergence history…</div>}
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-[1040px] space-y-8 px-8 py-7">
+        <p className="t-mono flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-ink-3">
+          {data && <span>{data.steps.toLocaleString()} {steady ? 'iterations' : 'time steps'}</span>}
+          {run.result?.converged && <span>stopped early: residual targets reached</span>}
+          {(active || data?.live) && <span className="flex items-center gap-1.5 text-primary-ink"><Spinner size={11} /> updating live</span>}
+        </p>
+        {error && <p className="text-bad">{error}</p>}
+        {!data && !error && <p className="flex items-center gap-2.5 text-ink-3"><Spinner size={14} /> Loading convergence history</p>}
         {data && data.times.length === 0 && (
-          <div className="panel p-6 text-muted-foreground">{active ? 'Waiting for the solver to start…' : 'This run stopped before the solver took its first step, so there is nothing to plot. Check the solver log.'}</div>
+          <p className="text-ink-3">{active ? 'Waiting for the solver to start.' : 'This run stopped before the solver took its first step, so there is nothing to plot. Check the solver log.'}</p>
         )}
         {data && data.times.length > 0 && (
           <>
             <Chart title="Initial residuals" x={data.times} series={residuals} log xLabel={xLabel} yLabel="Initial residual" />
             {hasCourant && (
-              <Chart title="Maximum Courant number" x={data.times} series={[{ name: 'Co max', color: '#1976d2', values: data.courantMax }]} log={false} xLabel={xLabel} yLabel="Co max" refLine={{ value: 1, label: 'Co = 1' }} />
+              <Chart title="Maximum Courant number" x={data.times} series={[{ name: 'Co max', color: '#21918c', values: data.courantMax }]} log={false} xLabel={xLabel} yLabel="Co max" refLine={{ value: 1, label: 'Co = 1' }} />
             )}
             {data.monitors.map((monitor) => (
               <Chart
@@ -198,7 +193,7 @@ export function ConvergenceView({ run }: { run: RunView }) {
                 series={monitor.series.map((entry, i) => ({ name: entry.label, color: COLORS[(i * 2) % COLORS.length]!, values: entry.values }))}
               />
             ))}
-            <p className="px-1 text-[13.5px] leading-relaxed text-muted-foreground">
+            <p className="max-w-[720px] border-t pt-5 text-[13px] leading-relaxed text-ink-3">
               {steady
                 ? 'Each curve is the initial residual of one equation per iteration. A steady solution is converged when every residual has dropped by several orders of magnitude and levelled off.'
                 : 'Each curve is the initial residual of one equation at the start of every time step. In a transient run, residuals fall as the flow settles; persistent spikes point to a time step that is too large.'}

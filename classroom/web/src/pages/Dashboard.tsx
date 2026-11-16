@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, CircleCheck, Clock, Cpu, LogOut, Play, Shield } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, LogOut, Shield } from 'lucide-react'
 import { api, type TutorialSummary } from '@c/api'
 import { navigate } from '@c/router'
 import { useSession } from '@c/store'
-import { Badge, Logo, Spinner, cn } from '@c/ui/primitives'
+import { Blocks, Spinner, Wordmark, cn, pad2 } from '@c/ui/primitives'
 
 export function UserMenu() {
   const info = useSession((state) => state.info)
@@ -13,23 +13,23 @@ export function UserMenu() {
   const initials = info.student.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()
   return (
     <div className="relative">
-      <button type="button" className="flex h-10 items-center gap-2 rounded-md px-2 text-[15px] hover:bg-[#eef1f4]" onClick={() => setOpen((value) => !value)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="hidden max-w-[160px] truncate sm:block">{info.student.name}</span>
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10212e] text-[12.5px] font-bold text-white">{initials}</span>
-        <ChevronDown size={16} className="text-muted-foreground" />
+      <button type="button" className="flex h-9 items-center gap-2 pl-2 pr-1 text-[13.5px] hover:bg-wash" onClick={() => setOpen((value) => !value)} aria-haspopup="menu" aria-expanded={open}>
+        <span className="hidden max-w-[150px] truncate md:block">{info.student.name}</span>
+        <span className="flex h-7 w-7 items-center justify-center bg-ink font-mono text-[11px] font-medium text-white">{initials}</span>
+        <ChevronDown size={14} className="text-ink-3" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="panel-float absolute right-0 z-40 mt-1 w-56 py-1.5" role="menu">
-            <div className="border-b px-3.5 pb-2 pt-1 text-[13px] text-muted-foreground">{info.className}</div>
+          <div className="pop cls-pop-in absolute right-0 z-40 mt-1 w-56 py-1" role="menu">
+            <div className="t-eyebrow px-3 pb-2 pt-2">{info.className}</div>
             {info.instructorEnabled && (
-              <button type="button" role="menuitem" className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left hover:bg-muted" onClick={() => navigate('/admin')}>
-                <Shield size={16} /> Instructor view
+              <button type="button" role="menuitem" className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13.5px] hover:bg-wash" onClick={() => navigate('/admin')}>
+                <Shield size={15} /> Instructor view
               </button>
             )}
-            <button type="button" role="menuitem" className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left hover:bg-muted" onClick={() => { void logout().then(() => navigate('/')) }}>
-              <LogOut size={16} /> Sign out
+            <button type="button" role="menuitem" className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13.5px] hover:bg-wash" onClick={() => { void logout().then(() => navigate('/')) }}>
+              <LogOut size={15} /> Sign out
             </button>
           </div>
         </>
@@ -38,7 +38,8 @@ export function UserMenu() {
   )
 }
 
-export function ComputeChip() {
+/** Shared solver capacity, as a row of slot blocks. */
+export function ComputeStatus() {
   const [status, setStatus] = useState<{ online: boolean; running: number; queued: number; slots: number } | null>(null)
   useEffect(() => {
     let alive = true
@@ -48,73 +49,47 @@ export function ComputeChip() {
     return () => { alive = false; clearInterval(timer) }
   }, [])
   if (!status) return null
-  const busy = status.running + status.queued
+  const text = !status.online ? 'Compute offline' : status.running + status.queued === 0 ? 'Compute idle' : `${status.running} running${status.queued ? `, ${status.queued} queued` : ''}`
   return (
-    <div
-      className={cn('hidden h-9 items-center gap-2 rounded-md border px-3 text-[13.5px] md:flex', status.online ? 'bg-white text-[#4b5661]' : 'border-[#f1c4c4] bg-danger-bg text-[#8f2020]')}
-      title={status.online ? `${status.slots} solver slots shared by the class` : 'New runs are disabled until the compute backend is back'}
-    >
-      <Cpu size={15} />
-      {status.online ? (busy ? `${status.running} running · ${status.queued} queued` : 'Compute idle') : 'Compute offline'}
-    </div>
+    <span className="flex items-center gap-2 font-mono text-[11.5px] text-ink-3" title={status.online ? `${status.slots} solver slots shared by the class` : 'New runs are disabled until the compute backend is back'}>
+      <span className="flex gap-[2px]">
+        {status.online
+          ? Array.from({ length: Math.max(1, status.slots) }, (_, i) => <span key={i} className={cn('h-2.5 w-2.5', i < status.running ? 'bg-v2' : 'bg-wash-2')} />)
+          : <span className="h-2.5 w-2.5 bg-bad" />}
+      </span>
+      <span className={cn(!status.online && 'text-bad')}>{text}</span>
+    </span>
   )
 }
 
-function Thumbnail({ tutorial }: { tutorial: TutorialSummary }) {
-  const [failed, setFailed] = useState(false)
-  if (tutorial.hasThumbnail && !failed) {
-    return <img src={api.thumbnailUrl(tutorial.id)} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} />
-  }
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#0f2533,#1b4a63)]">
-      <svg viewBox="0 0 200 110" className="h-full w-full opacity-70" aria-hidden>
-        {[20, 38, 56, 74, 92].map((y, i) => (
-          <path key={y} d={`M0 ${y} C 50 ${y - 14 + i * 4}, 90 ${y + 16 - i * 5}, 200 ${y - 4}`} fill="none" stroke="#5cc8f2" strokeOpacity={0.25 + i * 0.1} strokeWidth="2" />
-        ))}
-      </svg>
-    </div>
-  )
-}
+const LEVEL: Record<string, number> = { Beginner: 1, Intermediate: 2, Advanced: 3 }
 
 function Card({ tutorial }: { tutorial: TutorialSummary }) {
+  const [failed, setFailed] = useState(false)
   const ready = tutorial.reference.status === 'succeeded'
   const solving = tutorial.reference.status === 'running' || tutorial.reference.status === 'queued'
   return (
-    <button
-      type="button"
-      onClick={() => navigate(`/t/${tutorial.id}`)}
-      className="panel group flex flex-col overflow-hidden text-left transition-shadow hover:shadow-[0_6px_24px_rgb(16_24_40/0.14)]"
-    >
-      <div className="relative aspect-[16/9] w-full overflow-hidden border-b bg-[#eef1f4]">
-        <Thumbnail tutorial={tutorial} />
-        <div className="absolute left-3 top-3 flex gap-1.5">
-          <span className="rounded bg-[#10212e]/85 px-2 py-0.5 text-[12px] font-bold text-white">Tutorial {tutorial.order}</span>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center bg-[#10212e]/0 transition-colors group-hover:bg-[#10212e]/25">
-          <span className="flex h-12 w-12 scale-90 items-center justify-center rounded-full bg-white text-ink opacity-0 shadow-lg transition-all group-hover:scale-100 group-hover:opacity-100">
-            <Play size={20} className="ml-0.5" />
-          </span>
-        </div>
+    <button type="button" onClick={() => navigate(`/t/${tutorial.id}`)} className="group flex flex-col text-left">
+      <div className="relative aspect-[16/10] w-full overflow-hidden bg-wash">
+        {tutorial.hasThumbnail && !failed
+          ? <img src={api.thumbnailUrl(tutorial.id)} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" onError={() => setFailed(true)} />
+          : <div className="flex h-full items-center justify-center font-mono text-[12px] text-ink-4">no preview</div>}
+        <span className="absolute left-0 top-0 bg-paper px-2.5 py-1.5 font-mono text-[12px] font-medium">{pad2(tutorial.order)}</span>
+        <span className="absolute bottom-0 right-0 flex h-9 w-9 translate-y-full items-center justify-center bg-ink text-white transition-transform group-hover:translate-y-0"><ArrowUpRight size={17} /></span>
+        <span className="absolute inset-x-0 bottom-0 h-[3px] origin-left scale-x-0 bg-primary transition-transform duration-300 group-hover:scale-x-100" />
       </div>
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex flex-wrap gap-1.5">
-          <Badge tone="accent">{tutorial.analysisType}</Badge>
-          <Badge>{tutorial.dimension}</Badge>
-          <Badge tone={tutorial.difficulty === 'Beginner' ? 'success' : tutorial.difficulty === 'Advanced' ? 'violet' : 'warning'}>{tutorial.difficulty}</Badge>
-        </div>
-        <h3 className="mt-2.5 text-[18px] leading-snug font-bold">{tutorial.title}</h3>
-        <p className="mt-1 line-clamp-3 flex-1 text-[14px] text-muted-foreground">{tutorial.summary}</p>
-        <div className="mt-3.5 flex items-center justify-between border-t pt-3 text-[13px] text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            {ready ? <><CircleCheck size={15} className="text-success" /> Solved</>
-              : solving ? <><Spinner size={14} /> Solving reference…</>
-              : <><Clock size={15} /> Reference not ready</>}
-          </span>
-          <span>
-            {tutorial.mine?.runs ? `${tutorial.mine.runs} of your runs` : tutorial.mine ? 'Opened' : `Re-run ${tutorial.estimatedRuntime}`}
-          </span>
-        </div>
+      <div className="mt-4 flex items-center gap-3">
+        <span className="t-eyebrow">{tutorial.analysisType} · {tutorial.dimension}</span>
+        <span className="h-px flex-1 bg-line" />
+        <Blocks value={LEVEL[tutorial.difficulty] ?? 1} label={`${tutorial.difficulty} level`} />
       </div>
+      <h3 className="t-title mt-2 text-[21px] decoration-primary decoration-2 underline-offset-4 group-hover:underline">{tutorial.title}</h3>
+      <p className="mt-1.5 line-clamp-3 text-[13.5px] leading-relaxed text-ink-2">{tutorial.summary}</p>
+      <p className="mt-3 flex items-center gap-2 font-mono text-[11.5px] text-ink-3">
+        {ready ? <><span className="h-2 w-2 bg-ok" /> solved</> : solving ? <><Spinner size={12} /> solving reference</> : <><span className="h-2 w-2 bg-ink-4" /> reference not ready</>}
+        <span className="text-ink-4">/</span>
+        {tutorial.mine?.runs ? `${tutorial.mine.runs} of your runs` : tutorial.mine ? 'opened' : `re-run ${tutorial.estimatedRuntime}`}
+      </p>
     </button>
   )
 }
@@ -138,30 +113,33 @@ export function Dashboard() {
     return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [])
 
+  useEffect(() => { document.title = 'OpenFOAM Studio Classroom' }, [])
+
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-white px-4">
-        <Logo />
-        <div className="text-[18px] font-black tracking-tight">OpenFOAM Studio <span className="font-normal text-muted-foreground">Classroom</span></div>
+      <header className="flex h-[52px] shrink-0 items-center gap-5 border-b px-5">
+        <Wordmark />
         <div className="flex-1" />
-        <ComputeChip />
+        <ComputeStatus />
         <UserMenu />
       </header>
       <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-[1280px] px-6 py-8">
-          <p className="text-[13.5px] font-bold tracking-wide text-accent-foreground uppercase">{info.className}</p>
-          <h1 className="mt-1 text-[30px] font-black tracking-tight">Tutorials</h1>
-          <p className="mt-1.5 max-w-[720px] text-[15.5px] text-muted-foreground">
-            Each tutorial opens with a solved reference case. Explore its setup and results, then change a setting and run it again to see what happens.
-          </p>
-          {error && <p className="mt-6 text-danger">{error}</p>}
-          {!tutorials && !error && <div className="mt-10 flex items-center gap-3 text-muted-foreground"><Spinner size={18} /> Loading tutorials…</div>}
+        <div className="mx-auto max-w-[1240px] px-6 pb-16 pt-12 sm:px-10">
+          <p className="t-eyebrow">{info.className}</p>
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+            <h1 className="t-display text-[52px]">Tutorials</h1>
+            <p className="max-w-[520px] pb-1.5 text-[15px] leading-relaxed text-ink-2">
+              Every case opens already solved. Read its setup, look at the results, then change one thing and run it again.
+            </p>
+          </div>
+          {error && <p className="mt-8 text-bad">{error}</p>}
+          {!tutorials && !error && <div className="mt-12 flex items-center gap-3 text-ink-3"><Spinner size={16} /> Loading tutorials</div>}
           {tutorials && (
-            <div className="mt-7 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-10 grid gap-x-8 gap-y-12 border-t pt-10 sm:grid-cols-2 lg:grid-cols-3">
               {tutorials.map((tutorial) => <Card key={tutorial.id} tutorial={tutorial} />)}
             </div>
           )}
-          {tutorials?.length === 0 && <p className="mt-8 text-muted-foreground">No tutorials are installed on this server.</p>}
+          {tutorials?.length === 0 && <p className="mt-10 text-ink-3">No tutorials are installed on this server.</p>}
         </div>
       </main>
     </div>

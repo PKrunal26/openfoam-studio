@@ -19,7 +19,7 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (token.startsWith('*')) nodes.push(<em key={key}>{token.slice(1, -1)}</em>)
     else {
       const split = token.indexOf('](')
-      nodes.push(<a key={key} href={token.slice(split + 2, -1)} target="_blank" rel="noreferrer noopener" className="font-bold text-accent-foreground underline">{token.slice(1, split)}</a>)
+      nodes.push(<a key={key} href={token.slice(split + 2, -1)} target="_blank" rel="noreferrer noopener" className="font-medium text-primary-ink underline underline-offset-2">{token.slice(1, split)}</a>)
     }
     last = start + token.length
   }

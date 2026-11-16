@@ -1,9 +1,9 @@
-import { FileCode, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeft, FileCode, Upload } from 'lucide-react'
 import { api, type RunView } from '@c/api'
 import { useToasts, useWorkbench } from '@c/store'
-import { Badge, Button, formatDuration, formatNumber } from '@c/ui/primitives'
+import { Button, cn, formatNumber } from '@c/ui/primitives'
 import { CaseFilesView } from './CaseFilesView'
-import { useState } from 'react'
 
 export function RunSettingsView({ run }: { run: RunView }) {
   const tutorial = useWorkbench((state) => state.tutorial)!
@@ -13,9 +13,8 @@ export function RunSettingsView({ run }: { run: RunView }) {
   if (showFiles) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex h-12 shrink-0 items-center gap-3 border-b bg-white px-5">
-          <Button size="sm" variant="ghost" onClick={() => setShowFiles(false)}>← Back to settings</Button>
-          <span className="text-[14px] text-muted-foreground">{run.isReference ? 'Run 1 · Reference' : run.label}</span>
+        <div className="flex h-10 shrink-0 items-center border-b px-3">
+          <Button size="sm" variant="ghost" onClick={() => setShowFiles(false)}><ArrowLeft size={13} /> Back to settings</Button>
         </div>
         <div className="min-h-0 flex-1"><CaseFilesView runId={run.id} /></div>
       </div>
@@ -36,67 +35,50 @@ export function RunSettingsView({ run }: { run: RunView }) {
   }
   const changedCount = Object.keys(run.changed).length
   return (
-    <div className="h-full overflow-y-auto p-5">
-      <div className="mx-auto max-w-[900px] space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-[860px] px-8 py-7">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-[21px] font-bold">{run.isReference ? 'Run 1 · Reference' : run.label} settings</h2>
-            <p className="text-[14px] text-muted-foreground">
-              {run.isReference ? 'The tutorial’s reference setup.' : changedCount ? `${changedCount} ${changedCount === 1 ? 'setting differs' : 'settings differ'} from the reference.` : 'Same form settings as the reference.'}
-            </p>
+            <p className="t-eyebrow">{run.isReference ? 'The tutorial’s reference setup' : changedCount ? `${changedCount} ${changedCount === 1 ? 'setting differs' : 'settings differ'} from the reference` : 'Same form settings as the reference'}</p>
+            <h2 className="t-title mt-1.5 text-[24px]">Settings used</h2>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => setShowFiles(true)}><FileCode size={16} /> View case files</Button>
-            <Button onClick={() => void load()} title="Copy these values into the setup forms"><Upload size={16} /> Load into setup</Button>
+            <Button onClick={() => setShowFiles(true)}><FileCode size={14} /> Case files</Button>
+            <Button variant="ink" onClick={() => void load()} title="Copy these values into the setup forms"><Upload size={14} /> Load into setup</Button>
           </div>
         </div>
-
-        {run.result && (
-          <div className="panel grid grid-cols-2 gap-x-6 gap-y-3 p-4 sm:grid-cols-4">
-            {[
-              ['Mesh cells', run.result.cells?.toLocaleString() ?? '–'],
-              [tutorial.run.steady ? 'Iterations' : 'Final time', run.result.finalTime === null ? '–' : `${formatNumber(run.result.finalTime, 5)}${tutorial.run.steady ? '' : ' s'}`],
-              ['Compute time', formatDuration(run.result.durationMs)],
-              ['Outcome', run.status === 'succeeded' ? (run.result.converged ? 'Converged' : 'Completed') : 'Failed'],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <div className="text-[12.5px] font-bold tracking-wide text-muted-foreground uppercase">{label}</div>
-                <div className="mt-0.5 text-[18px] font-bold tabular-nums">{value}</div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {run.overridden.length > 0 && (
-          <div className="panel p-4 text-[14.5px]">
-            <span className="font-bold">Hand-edited files in this run:</span>{' '}
-            {run.overridden.map((file) => <span key={file} className="mr-2 font-mono text-[13px]">{file}</span>)}
-          </div>
+          <p className="mt-5 text-[13.5px] text-ink-2">Files edited by hand in this run: {run.overridden.map((file) => <span key={file} className="t-mono mr-2.5 text-ink">{file}</span>)}</p>
         )}
 
-        <div className="panel overflow-hidden">
-          <table className="w-full text-left text-[14.5px]">
-            <thead className="border-b bg-[#fafbfc] text-[12.5px] tracking-wide text-muted-foreground uppercase">
-              <tr><th className="px-4 py-2.5 font-bold">Setting</th><th className="px-4 py-2.5 font-bold">This run</th><th className="px-4 py-2.5 font-bold">Reference</th></tr>
-            </thead>
-            <tbody>
-              {tutorial.params.map((def) => {
-                const value = run.changed[def.id] ?? def.default
-                const changed = def.id in run.changed
-                return (
-                  <tr key={def.id} className={changed ? 'bg-[#eef8fd]' : undefined}>
-                    <td className="border-b px-4 py-2.5">{def.symbol && <span className="mr-1 text-muted-foreground">({def.symbol})</span>}{def.label}</td>
-                    <td className="border-b px-4 py-2.5 tabular-nums">
-                      <span className={changed ? 'font-bold' : undefined}>{labelFor(def.id, value)}</span>{def.unit && <span className="ml-1 text-muted-foreground">{def.unit}</span>}
-                      {changed && <span className="ml-2"><Badge tone="accent">changed</Badge></span>}
-                    </td>
-                    <td className="border-b px-4 py-2.5 tabular-nums text-muted-foreground">{labelFor(def.id, def.default)}{def.unit && <span className="ml-1">{def.unit}</span>}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <table className="mt-7 w-full text-left text-[13.5px]">
+          <thead>
+            <tr className="border-b border-ink">
+              <th className="t-eyebrow pb-2 pr-4 font-medium">Setting</th>
+              <th className="t-eyebrow pb-2 pr-4 font-medium">This run</th>
+              <th className="t-eyebrow pb-2 font-medium">Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tutorial.params.map((def) => {
+              const value = run.changed[def.id] ?? def.default
+              const changed = def.id in run.changed
+              return (
+                <tr key={def.id} className="border-b">
+                  <td className="py-2.5 pr-4">
+                    <span className="flex items-center gap-2">
+                      <span className={cn('h-2 w-2 shrink-0', changed ? 'bg-v4 outline outline-1 outline-[#c9b700]' : 'bg-transparent')} />
+                      {def.label}{def.symbol && <span className="font-mono text-[12px] text-ink-3">{def.symbol}</span>}
+                    </span>
+                  </td>
+                  <td className={cn('py-2.5 pr-4', def.type === 'number' && 't-mono', changed && 'font-medium')}>{labelFor(def.id, value)}{def.unit && <span className="ml-1.5 font-mono text-[12px] font-normal text-ink-3">{def.unit}</span>}</td>
+                  <td className={cn('py-2.5 text-ink-3', def.type === 'number' && 't-mono')}>{labelFor(def.id, def.default)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )

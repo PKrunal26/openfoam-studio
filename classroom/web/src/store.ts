@@ -112,7 +112,7 @@ function defaultDisplay(tutorial: TutorialDef | null): DisplayState {
   return {
     field: tutorial?.results.defaultField ?? 'U',
     component: -1,
-    colormap: 'rainbow',
+    colormap: 'viridis',
     rangeMode: 'all',
     edges: false,
     slice: !!tutorial?.results.slice,
@@ -272,6 +272,22 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   togglePatch: (patch) => set((state) => ({
     hiddenPatches: state.hiddenPatches.includes(patch) ? state.hiddenPatches.filter((p) => p !== patch) : [...state.hiddenPatches, patch],
   })),
+}))
+
+// ── What the viewport currently shows (read by the inspector) ────────────────
+
+export interface ViewerSnapshot {
+  loading: boolean
+  fields: { name: string; numComponents: number }[]
+  times: number[]
+  stepIndex: number
+  range: [number, number] | null
+  patches: string[]
+}
+
+export const useViewerInfo = create<{ info: ViewerSnapshot; set: (info: ViewerSnapshot) => void }>((set) => ({
+  info: { loading: false, fields: [], times: [], stepIndex: 0, range: null, patches: [] },
+  set: (info) => set({ info }),
 }))
 
 /** The setting item currently open in the settings panel, if any. */

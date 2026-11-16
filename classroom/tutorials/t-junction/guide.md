@@ -24,7 +24,7 @@ The outlet is held at zero pressure. The pressure the solver computes at each in
 
 ## Walk through the setup
 
-1. **Geometry**: click each face group in the list on the right. There are two inlets, one outlet and the walls.
+1. **Geometry**: hover each patch in the list next to the model. There are two inlets, one outlet and the walls.
 2. **Boundary conditions → Velocity inlet 1 / 2**: note the direction of each inlet velocity in `0/U`. The branch flows in −y.
 3. **Mesh**: four blocks of cubic cells. Open **Case files → system/blockMeshDict** and find the `defaultPatch` entry: every face you do not name becomes a wall.
 
@@ -32,13 +32,13 @@ The outlet is held at zero pressure. The pressure the solver computes at each in
 
 ## Read the results
 
-Open **Run 1 → Solution fields**. The view shows a **cutting plane** through the middle of the duct, with the walls drawn transparent.
+Open **Run 1** from the Runs list (the **Fields** tab). The view shows a **cutting plane** through the middle of the duct, with the walls drawn transparent.
 
 - The branch flow is pushed against the downstream wall of the junction and accelerates. Just after the corner there is a slow **separation zone** on the upper wall.
 - Change the cutting plane **Normal** to **X** and move the **Position** slider to slide a cross-section along the main duct. Downstream of the junction the fastest flow sits low in the duct.
 - Switch to **pressure**. The stagnation point where the branch flow meets the main stream shows as a high-pressure spot on the floor.
 
-Open **Convergence plots → Inlet pressures**. Both inlets need about 8.7 m²/s², roughly 10 Pa, to drive this flow.
+Open the **Convergence** tab and scroll to **Inlet pressures**. Both inlets need about 8.7 m²/s², roughly 10 Pa, to drive this flow.
 
 ## Exercise 1: change the flow split
 

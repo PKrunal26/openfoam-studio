@@ -1,8 +1,8 @@
 # OpenFOAM Studio Classroom
 
 A website for teaching CFD with OpenFOAM. Students sign in, open a tutorial that
-is **already solved**, explore its setup and results in a SimScale-style
-workbench, then change a setting and re-run it on a shared server.
+is **already solved**, explore its setup and results in a browser workbench,
+then change a setting and re-run it on a shared server.
 
 It lives in `classroom/` and reuses the desktop app's Docker runner (`core/`)
 and 3D viewer (`renderer/lib/vtk/`). No LLM is involved, so there is no token
@@ -27,15 +27,23 @@ cost.
 
 | Area | What it does |
 |---|---|
-| Tutorials page | Cards for each tutorial with status and the student's own run count |
-| Simulation tree | Geometry, Model, Materials, Initial conditions, Boundary conditions, Numerics, Simulation control, Mesh, Case files, Simulation runs |
-| Settings panels | Forms for each node, live derived values (Re, Co, Ra, St ...), warnings, the mesh patches a boundary condition is assigned to, and the OpenFOAM files it writes |
+| Tutorials page | One card per tutorial with a result preview, level and the student's own run count |
+| Sidebar | Geometry, the setup steps (model, materials, initial and boundary conditions, numerics, simulation control, mesh), case files, and the list of runs with live progress |
+| Inspector | The open setup step: inputs, live computed values (Re, Co, Ra, St ...), warnings, the mesh patches it is assigned to and the OpenFOAM files it writes |
 | 3D viewport | Mesh geometry with patch highlighting; results colored by any field, time animation, cutting plane (3D), velocity vectors, mesh edges, image export |
-| Convergence plots | Residuals, maximum Courant number and monitors (force coefficients, inlet pressure), live while a run is solving |
-| Solver log | Live log with the failure reason extracted when a run diverges |
-| Case files | The real dictionaries generated from the forms, with changed lines highlighted. Students can edit a file by hand; edits pass the same safety policy as the desktop app |
+| Run tabs | Fields, Convergence (residuals, Courant number, force and pressure monitors, live while solving), Log (with the failure reason extracted) and Settings (what the run used, against the reference) |
+| Case files | The real dictionaries generated from the forms, with changed lines marked. Students can edit a file by hand; edits pass the same safety policy as the desktop app |
 | Guide | A step-by-step walkthrough with exercises for every tutorial |
-| Job status | Queue position and progress of the student's runs |
+
+### Look and feel
+
+One white sheet divided by hairlines, square corners, flat fills. The brand
+device is a five-step viridis band (the colormap results are shown in), used
+for the logo mark, the page strip, guide progress and level markers. Type:
+Space Grotesk for names, IBM Plex Sans for text, IBM Plex Mono for anything a
+solver would print (labels, units, file names, numbers). Tokens live in
+`classroom/web/src/styles.css`; shared controls (custom select, segmented
+control, switch, buttons) in `classroom/web/src/ui/primitives.tsx`.
 
 ## Tutorials
 
@@ -136,6 +144,61 @@ your region.
 A 4-month course on a `c7i.xlarge` left running costs roughly half of a $1,000
 credit. Stopping the instance outside teaching weeks (the disk and all student
 work are kept) cuts that further. There is no per-student or per-run cost.
+
+### On your own Mac (and working on it live)
+
+A Mac mini works well as the class server, and you can keep developing on the
+same machine. The OpenFOAM image has a native arm64 build, so Apple silicon
+runs it without emulation.
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+   (OrbStack or Colima also work) and Node 22. In Docker Desktop's resource
+   settings give it about 2 CPUs and 2.5 GB of memory per solver slot.
+2. Keep the repository under your home folder: Docker Desktop only shares
+   `/Users` with containers by default, and solver containers mount the data
+   directory (`classroom/data` unless you change it).
+3. For the class, run the built server:
+
+   ```bash
+   npm ci && npm run classroom:build
+   ```
+
+   ```bash
+   OFS_CLASS_CODE=... OFS_INSTRUCTOR_CODE=... npm run classroom:start
+   ```
+
+4. To work on it live without disturbing students, run a second, separate
+   instance with hot reload on other ports and its own data folder:
+
+   ```bash
+   OFS_CLASSROOM_PORT=8090 OFS_CLASSROOM_DATA="$PWD/classroom/data-dev" OFS_CLASS_CODE=dev npm run classroom:dev
+   ```
+
+   The web app is then at http://localhost:5174. When you are happy with a
+   change, rebuild and restart the class instance (step 3). A restart keeps
+   accounts and results; a run that was in progress shows as interrupted and
+   can be started again.
+5. Students on the same network open `http://<the-mac's-address>:8080`. To
+   reach it from anywhere with HTTPS and no router changes, put a tunnel in
+   front of it, for example Cloudflare Tunnel:
+
+   ```bash
+   cloudflared tunnel --url http://localhost:8080
+   ```
+
+   or Tailscale Funnel. Then start the server with `OFS_SECURE_COOKIES=1` and
+   `OFS_TRUST_PROXY=1`.
+6. Stop the Mac from sleeping (System Settings, Energy, "Prevent automatic
+   sleeping when the display is off"), or keep this running in a terminal:
+
+   ```bash
+   caffeinate -s
+   ```
+
+If Docker Desktop's default socket is turned off, set `DOCKER_HOST` to its
+socket path before starting the server. This setup has been verified on Linux
+only; the first start on macOS is the check that Docker file sharing and the
+socket are set up as described.
 
 ### Without Docker Compose
 

@@ -38,13 +38,13 @@ At the inlet, k and ε are estimated from a turbulence intensity I and a mixing 
 
 ## Read the results
 
-Open **Run 1 → Solution fields**.
+Open **Run 1** from the Runs list (the **Fields** tab).
 
 - **Velocity magnitude** shows the fast jet above the step and the slow recirculation region below it.
 - Switch **Component** to **X**. Negative values (flow going backwards) mark the recirculation bubble. Where the near-wall x-velocity changes sign on the floor is the **reattachment point**. Estimate it in step heights (H = 0.025 m).
 - Look at **k**: turbulence is produced in the shear layer between the jet and the bubble.
 
-Open **Convergence plots**. The run stopped after about 140 iterations because every residual passed 1e-3. The **Inlet pressure** monitor has levelled off, which is a second, independent sign of convergence.
+Open the **Convergence** tab. The run stopped after about 140 iterations because every residual passed 1e-3. The **Inlet pressure** monitor has levelled off, which is a second, independent sign of convergence.
 
 ## Exercise 1: compare turbulence models
 
@@ -68,7 +68,7 @@ Upwind converges easily, but its numerical diffusion thickens the shear layer an
 ## Exercise 3: how converged is converged?
 
 1. Reset to the reference, then set the **Residual target** to **1e-4** and run.
-2. Open **Convergence plots**.
+2. Open the **Convergence** tab.
 
 The residuals stop falling and hover around 5e-4. The run uses all its iterations without ever "converging": with a second-order scheme, the shear layer behind the step keeps flickering slightly and the steady solver cannot settle it.
 

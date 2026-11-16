@@ -4,7 +4,7 @@ The lid-driven cavity is the "hello world" of CFD. A square box is filled with f
 
 It is simple enough to solve in seconds, and it contains every ingredient of a real OpenFOAM case.
 
-> This tutorial is already solved. Open **Simulation runs → Run 1 → Solution fields** in the tree to see the result, then come back here.
+> This tutorial is already solved. Open **Run 1** in the Runs list on the left to see the result, then come back here.
 
 ### What you will learn
 
@@ -26,7 +26,7 @@ With lid speed U = 1 m/s, cavity size L = 0.1 m and viscosity ν = 0.01 m²/s, t
 
 ## Walk through the setup
 
-Click through the tree on the left, top to bottom. Each node opens a panel in the viewport.
+Work down the **Setup** list on the left. Each entry opens its settings next to the model.
 
 1. **Geometry** shows the mesh boundary. The faces are grouped into named *patches*.
 2. **Materials → Fluid** sets the viscosity. It is written to `constant/physicalProperties`.
@@ -38,20 +38,20 @@ Click through the tree on the left, top to bottom. Each node opens a panel in th
 
 ## Read the results
 
-Open **Run 1 → Solution fields**.
+Open **Run 1** from the Runs list (the **Fields** tab).
 
 - The color shows velocity magnitude. It is fastest right under the lid and almost zero in the bottom corners.
 - Press **play** to watch the flow start from rest. By t = 0.5 s it has stopped changing: it has reached a steady state.
 - Switch the **Field** to pressure. There is a low-pressure spot in the top-left corner and a high-pressure spot in the top-right, where the lid pushes fluid into the wall.
 - Turn on **Velocity vectors** to see the vortex.
 
-Then open **Convergence plots**. The residuals fall steadily, which is what a flow settling to steady state looks like.
+Then open the **Convergence** tab. The residuals fall steadily, which is what a flow settling to steady state looks like.
 
 ## Exercise 1: raise the Reynolds number
 
 1. Open **Materials → Fluid** and change the viscosity to `0.001`. The panel now shows Re = 100.
-2. Press **Run simulation**. Watch the job in **Job status**; it takes a few seconds.
-3. Open the new run's **Solution fields**.
+2. Press **Run simulation**. Watch its progress in the **Runs** list; it takes a few seconds.
+3. Open the new run from the Runs list when it has finished.
 
 ### Questions
 
@@ -67,7 +67,7 @@ Co = U Δt / Δx
 ```
 
 1. Press **Reset changes** in the top bar to go back to the reference setup (Re = 10). Then, in **Mesh**, choose **80 × 80**. Look at **Simulation control**: the cell size has shrunk four times, so the Courant number is now 4, and a warning appears.
-2. Run it anyway. The run fails. Open its **Solver log** and scroll to the end, then look at the **Convergence plots**. What do the residuals and the maximum Courant number do just before the crash?
+2. Run it anyway. The run fails. Open its **Log** tab and scroll to the end, then look at the **Convergence** tab. What do the residuals and the maximum Courant number do just before the crash?
 3. Now set the **Time step** to `0.00125` so that Co = 1 again, and run once more.
 
 > A finer mesh needs a smaller time step. This link between Δx and Δt is one of the most important practical rules in transient CFD.

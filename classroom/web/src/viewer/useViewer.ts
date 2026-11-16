@@ -48,13 +48,13 @@ const EMPTY_INFO: ViewerInfo = {
   loading: false, error: null, contextLost: false, times: [], stepIndex: 0, fields: [], range: null, points: null, patches: [], size: null,
 }
 
-const BACKGROUND: Vec3 = [0.953, 0.957, 0.965]
-const MODEL_COLOR: Vec3 = [0.22, 0.68, 0.93]
-const DIM_COLOR: Vec3 = [0.86, 0.89, 0.92]
-const FLAT_LIGHT = { ambient: 0.45, diffuse: 0.6 }
+const BACKGROUND: Vec3 = [0.957, 0.969, 0.969]
+const MODEL_COLOR: Vec3 = [0.16, 0.66, 0.63]
+const DIM_COLOR: Vec3 = [0.85, 0.89, 0.89]
+const FLAT_LIGHT = { ambient: 0.5, diffuse: 0.58 }
 /** Field colors are shown unshaded so they match the legend exactly. */
 const FIELD_LIGHT = { ambient: 1, diffuse: 0 }
-const OUTLINE_COLOR: Vec3 = [0.62, 0.68, 0.74]
+const OUTLINE_COLOR: Vec3 = [0.6, 0.67, 0.68]
 const ISO_VIEW: { dir: Vec3; up: Vec3 } = { dir: [0.55, 0.42, 0.72], up: [0, 1, 0] }
 const FRONT_VIEW: { dir: Vec3; up: Vec3 } = { dir: [0, 0, 1], up: [0, 1, 0] }
 

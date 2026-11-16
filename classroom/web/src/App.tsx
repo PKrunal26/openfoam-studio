@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { usePath } from './router'
 import { useSession } from './store'
-import { Spinner, Toasts } from './ui/primitives'
+import { Button, Spinner, Toasts, ViridisBand } from './ui/primitives'
 import { JoinPage } from './pages/JoinPage'
 import { Dashboard } from './pages/Dashboard'
 import { Workbench } from './pages/Workbench'
@@ -15,17 +15,13 @@ export function App() {
 
   let page
   if (loading) {
-    page = (
-      <div className="flex h-full items-center justify-center gap-3 text-muted-foreground">
-        <Spinner size={20} /> Loading…
-      </div>
-    )
+    page = <div className="flex h-full items-center justify-center gap-3 text-ink-3"><Spinner size={18} /> Loading</div>
   } else if (!info) {
     page = (
       <div className="flex h-full flex-col items-center justify-center gap-3">
-        <p className="text-[17px] font-bold">The classroom server is not reachable</p>
-        <p className="text-muted-foreground">{error}</p>
-        <button type="button" className="font-bold text-accent-foreground underline" onClick={() => void refresh()}>Try again</button>
+        <p className="t-title text-[20px]">The classroom server is not reachable</p>
+        <p className="text-ink-3">{error}</p>
+        <Button onClick={() => void refresh()}>Try again</Button>
       </div>
     )
   } else if (path.startsWith('/admin')) {
@@ -38,9 +34,10 @@ export function App() {
   }
 
   return (
-    <>
-      {page}
+    <div className="flex h-full flex-col">
+      <ViridisBand className="h-[3px] shrink-0" />
+      <div className="min-h-0 flex-1">{page}</div>
       <Toasts />
-    </>
+    </div>
   )
 }

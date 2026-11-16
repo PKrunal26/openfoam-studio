@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FileCode, Pencil, RotateCcw, Save, X } from 'lucide-react'
+import { Pencil, RotateCcw, Save } from 'lucide-react'
 import { api, type CaseFile } from '@c/api'
 import { useToasts, useWorkbench } from '@c/store'
-import { Button, Notice, Spinner, cn } from '@c/ui/primitives'
+import { Button, Notice, Spinner, Tag, cn } from '@c/ui/primitives'
 
 const GROUPS: { dir: string; label: string }[] = [
-  { dir: '0', label: '0: initial and boundary conditions' },
-  { dir: 'constant', label: 'constant: physical properties' },
-  { dir: 'system', label: 'system: mesh, time and numerics' },
+  { dir: '0', label: 'Fields and boundary conditions' },
+  { dir: 'constant', label: 'Physical properties' },
+  { dir: 'system', label: 'Mesh, time and numerics' },
 ]
 
 /** Light OpenFOAM dictionary highlighting: comments, keywords, numbers. */
@@ -20,11 +20,11 @@ function highlight(line: string) {
     <>
       {match ? (
         <>
-          {match[1]}<span className="text-[#0b6aa2]">{match[2]}</span>{match[3]}
-          {match[4]!.split(/(-?\b\d+\.?\d*(?:[eE][-+]?\d+)?\b)/).map((part, i) => (i % 2 ? <span key={i} className="text-[#b3420f]">{part}</span> : part))}
+          {match[1]}<span className="text-primary-ink">{match[2]}</span>{match[3]}
+          {match[4]!.split(/(-?\b\d+\.?\d*(?:[eE][-+]?\d+)?\b)/).map((part, i) => (i % 2 ? <span key={i} className="text-v0">{part}</span> : part))}
         </>
       ) : code}
-      {tail && <span className="text-[#7d8894]">{tail}</span>}
+      {tail && <span className="text-ink-4">{tail}</span>}
     </>
   )
 }
@@ -33,7 +33,7 @@ function FileBody({ content, referenceLines }: { content: string; referenceLines
   const lines = content.replace(/\n$/, '').split('\n')
   let inBlockComment = false
   return (
-    <div className="min-w-max py-3 font-mono text-[13px] leading-[1.6]">
+    <div className="min-w-max py-4 font-mono text-[12.5px] leading-[1.65]">
       {lines.map((line, index) => {
         const startsBlock = line.includes('/*')
         const commentLine = inBlockComment || startsBlock
@@ -41,9 +41,9 @@ function FileBody({ content, referenceLines }: { content: string; referenceLines
         if (line.includes('*/')) inBlockComment = false
         const changed = !!referenceLines && line.trim() !== '' && !referenceLines.has(line)
         return (
-          <div key={index} className={cn('flex pr-6', changed && 'bg-[#e4f4fc]')}>
-            <span className={cn('w-12 shrink-0 select-none pr-3 text-right text-[#a3acb5]', changed && 'border-l-[3px] border-accent-strong text-accent-foreground')}>{index + 1}</span>
-            <span className="whitespace-pre">{commentLine ? <span className="text-[#7d8894]">{line || ' '}</span> : line ? highlight(line) : ' '}</span>
+          <div key={index} className={cn('flex pr-8', changed && 'bg-[#fdf9d2]')}>
+            <span className={cn('w-14 shrink-0 select-none border-l-[3px] pr-4 text-right', changed ? 'border-v4 text-ink-2' : 'border-transparent text-ink-4')}>{index + 1}</span>
+            <span className="whitespace-pre">{commentLine ? <span className="text-ink-4">{line || ' '}</span> : line ? highlight(line) : ' '}</span>
           </div>
         )
       })}
@@ -109,68 +109,72 @@ export function CaseFilesView({ runId, initialPath }: { runId?: string; initialP
   }
 
   return (
-    <div className="flex h-full gap-4 p-5">
-      <div className="panel flex w-[270px] shrink-0 flex-col overflow-hidden">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-[17.5px] font-bold">Case files</h2>
-          <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-            {readOnly ? 'The exact OpenFOAM inputs this run was solved with.' : 'The OpenFOAM case generated from your settings.'}
-          </p>
+    <div className="flex h-full">
+      <div className="flex w-[248px] shrink-0 flex-col border-r">
+        <div className="shrink-0 px-5 pb-3 pt-5">
+          <p className="t-eyebrow">{readOnly ? 'Inputs of this run' : 'Generated from your settings'}</p>
+          <h2 className="t-title mt-1.5 text-[21px]">Case files</h2>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto py-1.5">
-          {!files && !error && <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground"><Spinner size={14} /> Loading…</div>}
+        <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          {!files && !error && <div className="flex items-center gap-2 px-5 py-3 text-ink-3"><Spinner size={13} /> Loading</div>}
           {GROUPS.map((group) => {
             const members = (files ?? []).filter((candidate) => candidate.relPath.startsWith(`${group.dir}/`))
             if (!members.length) return null
             return (
-              <div key={group.dir} className="mb-1">
-                <div className="px-4 pb-1 pt-2 text-[12px] font-bold tracking-wide text-muted-foreground uppercase">{group.label}</div>
-                {members.map((member) => (
-                  <button
-                    key={member.relPath} type="button"
-                    className={cn('flex h-9 w-full items-center gap-2 px-4 text-left font-mono text-[13.5px]', member.relPath === file?.relPath ? 'bg-accent text-accent-foreground' : 'hover:bg-[#f1f4f6]')}
-                    onClick={() => { if (draft !== null && !window.confirm('Discard your unsaved edits?')) return; setPath(member.relPath); setDraft(null); setSaveError(null); if (!readOnly) select({ kind: 'files', path: member.relPath }) }}
-                  >
-                    <FileCode size={14} className="shrink-0" />
-                    <span className="truncate">{member.relPath.slice(group.dir.length + 1)}</span>
-                    {member.overridden && <span className="ml-auto rounded bg-warning-bg px-1.5 text-[11px] font-bold text-[#8a5300]" title="Edited by hand">edited</span>}
-                  </button>
-                ))}
+              <div key={group.dir} className="mt-3">
+                <div className="flex items-baseline gap-2 px-5 pb-1.5">
+                  <span className="t-mono text-[12.5px] font-medium">{group.dir}/</span>
+                  <span className="truncate text-[12px] text-ink-3">{group.label}</span>
+                </div>
+                {members.map((member) => {
+                  const selected = member.relPath === file?.relPath
+                  return (
+                    <button
+                      key={member.relPath} type="button"
+                      className={cn('relative flex h-8 w-full items-center gap-2 pl-8 pr-4 text-left font-mono text-[12.5px]', selected ? 'bg-primary-tint font-medium' : 'hover:bg-wash')}
+                      onClick={() => { if (draft !== null && !window.confirm('Discard your unsaved edits?')) return; setPath(member.relPath); setDraft(null); setSaveError(null); if (!readOnly) select({ kind: 'files', path: member.relPath }) }}
+                    >
+                      {selected && <span className="absolute inset-y-0 left-0 w-[3px] bg-primary" />}
+                      <span className="truncate">{member.relPath.slice(group.dir.length + 1)}</span>
+                      {member.overridden && <span className="ml-auto h-2 w-2 shrink-0 bg-v4 outline outline-1 outline-[#c9b700]" title="Edited by hand" />}
+                    </button>
+                  )
+                })}
               </div>
             )
           })}
         </div>
       </div>
 
-      <div className="panel flex min-w-0 flex-1 flex-col overflow-hidden">
-        {error && <div className="p-5 text-danger">{error}</div>}
+      <div className="flex min-w-0 flex-1 flex-col">
+        {error && <div className="p-6 text-bad">{error}</div>}
         {file && (
           <>
-            <div className="flex min-h-[52px] shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2">
-              <span className="font-mono text-[15px] font-bold">{file.relPath}</span>
-              {file.overridden && <span className="rounded bg-warning-bg px-2 py-0.5 text-[12.5px] font-bold text-[#8a5300]">Edited by hand</span>}
-              {draft === null && changedCount > 0 && <span className="text-[13px] text-accent-foreground">{changedCount} {changedCount === 1 ? 'line differs' : 'lines differ'} from the reference</span>}
+            <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-5 py-1.5">
+              <span className="t-mono text-[13.5px] font-medium">{file.relPath}</span>
+              {file.overridden && <Tag tone="warn">Edited by hand</Tag>}
+              {draft === null && changedCount > 0 && <span className="flex items-center gap-1.5 text-[12.5px] text-ink-3"><span className="h-2 w-2 bg-v4 outline outline-1 outline-[#c9b700]" />{changedCount} {changedCount === 1 ? 'line differs' : 'lines differ'} from the reference</span>}
               <div className="flex-1" />
-              {!readOnly && draft === null && file.overridden && <Button size="sm" onClick={() => void revert()}><RotateCcw size={15} /> Back to generated file</Button>}
-              {!readOnly && draft === null && <Button size="sm" onClick={() => { setDraft(file.content); setSaveError(null) }}><Pencil size={15} /> Edit</Button>}
+              {!readOnly && draft === null && file.overridden && <Button size="sm" variant="ghost" onClick={() => void revert()}><RotateCcw size={13} /> Back to generated</Button>}
+              {!readOnly && draft === null && <Button size="sm" onClick={() => { setDraft(file.content); setSaveError(null) }}><Pencil size={13} /> Edit</Button>}
               {draft !== null && (
                 <>
-                  <Button size="sm" variant="ghost" onClick={() => { setDraft(null); setSaveError(null) }}><X size={15} /> Cancel</Button>
-                  <Button size="sm" variant="primary" disabled={saving || draft === file.content} onClick={() => void save()}>{saving ? <Spinner size={14} /> : <Save size={15} />} Save</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setDraft(null); setSaveError(null) }}>Cancel</Button>
+                  <Button size="sm" variant="primary" disabled={saving || draft === file.content} onClick={() => void save()}>{saving ? <Spinner size={13} /> : <Save size={13} />} Save</Button>
                 </>
               )}
             </div>
             {draft !== null && (
-              <div className="shrink-0 space-y-2 border-b bg-[#fafbfc] px-4 py-2.5">
+              <div className="shrink-0 space-y-2 border-b px-5 py-3">
                 <Notice tone="info">You are editing the dictionary directly. After saving, the forms no longer write to this file until you go back to the generated version.</Notice>
                 {saveError && <Notice tone="error">{saveError}</Notice>}
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-auto bg-white">
+            <div className="min-h-0 flex-1 overflow-auto">
               {draft !== null ? (
                 <textarea
                   aria-label={`Edit ${file.relPath}`} spellCheck={false} value={draft} onChange={(event) => setDraft(event.target.value)}
-                  className="block h-full w-full resize-none p-4 font-mono text-[13px] leading-[1.6] outline-none"
+                  className="block h-full w-full resize-none px-5 py-4 font-mono text-[12.5px] leading-[1.65] outline-none"
                 />
               ) : <FileBody content={file.content} referenceLines={referenceLines} />}
             </div>

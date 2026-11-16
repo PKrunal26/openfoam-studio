@@ -36,13 +36,13 @@ The front of the collapsing column moves at roughly twice the characteristic spe
 
 ## Read the results
 
-Open **Run 1 → Solution fields**. Red is water, blue is air.
+Open **Run 1** from the Runs list (the **Fields** tab). Yellow is water, dark purple is air.
 
 - Press **play**. Follow the front along the floor, the impact on the obstacle at about t = 0.2 s and the splash against the right wall.
 - Switch to **Velocity** and turn on **Velocity vectors** near the impact.
 - Switch to **p_rgh** at the moment of impact. Where is the pressure highest?
 
-Open **Convergence plots** and look at the **maximum Courant number**: the solver holds it just under 1 by changing the time step.
+Open the **Convergence** tab and look at the **maximum Courant number**: the solver holds it just under 1 by changing the time step.
 
 ## Exercise 1: the Moon
 

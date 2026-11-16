@@ -38,13 +38,13 @@ Cd = F_drag / (½ ρ U² D)        Cl = F_lift / (½ ρ U² D)
 
 ## Read the results
 
-Open **Run 1 → Solution fields** and press **play**. The run keeps its last 60 snapshots, about five shedding cycles.
+Open **Run 1** from the Runs list (the **Fields** tab) and press **play**. The run keeps its last 60 snapshots, about five shedding cycles.
 
 - **Velocity magnitude** shows the wake swinging from side to side.
 - **Pressure** shows each vortex as a low-pressure core.
 - Turn on **Velocity vectors** and step through one cycle frame by frame.
 
-Open **Convergence plots → Force coefficients**.
+Open the **Convergence** tab and scroll to **Force coefficients**.
 
 - The lift coefficient oscillates around zero; the drag coefficient has a mean of about 1.5 and wobbles at twice the lift frequency.
 - Hover over the lift curve and read off the times of two successive peaks. Their difference is the period T.

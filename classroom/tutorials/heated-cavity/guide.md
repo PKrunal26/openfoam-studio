@@ -42,7 +42,7 @@ which compares buoyancy with the two diffusion processes that oppose it: viscosi
 
 ## Read the results
 
-Open **Run 1 → Solution fields**.
+Open **Run 1** from the Runs list (the **Fields** tab).
 
 - **Temperature**: the isotherms are vertical only in thin layers at the two walls. In the core they lie almost flat: the air is **stratified**, warm on top and cool below.
 - Press **play** to watch the circulation develop from still air and settle.

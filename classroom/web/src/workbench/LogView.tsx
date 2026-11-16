@@ -48,39 +48,35 @@ export function LogView({ run }: { run: RunView }) {
   }, [lines])
 
   return (
-    <div className="flex h-full flex-col p-5">
-      <div className="mx-auto flex min-h-0 w-full max-w-[1200px] flex-1 flex-col gap-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-[21px] font-bold">Solver log</h2>
-            <p className="text-[14px] text-muted-foreground">{run.isReference ? 'Run 1 · Reference' : run.label} · {statusText(run.status)}{run.job?.state === 'queued' ? ` · position ${run.job.position} in the queue` : ''}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {active && <span className="flex items-center gap-2 text-[14px] text-accent-foreground"><Spinner size={15} /> Live</span>}
-            {run.result && !STATIC_DEMO && (
-              <a className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-white px-3 text-[14px] font-bold hover:bg-muted" href={api.logDownloadUrl(tutorialId, run.id)}>
-                <Download size={16} /> Download full log
-              </a>
-            )}
-          </div>
-        </div>
-        {(run.status === 'failed' || run.status === 'error' || run.status === 'cancelled' || run.status === 'interrupted') && run.reason && (
+    <div className="flex h-full flex-col">
+      {(run.status === 'failed' || run.status === 'error' || run.status === 'cancelled' || run.status === 'interrupted') && run.reason && (
+        <div className="shrink-0 border-b px-5 py-3">
           <Notice tone={run.status === 'failed' || run.status === 'error' ? 'error' : 'warning'}>
-            <span className="font-bold">{statusText(run.status)}{run.result?.failedStage ? ` during ${run.result.failedStage}` : ''}.</span> {run.reason}
+            <span className="font-medium">{statusText(run.status)}{run.result?.failedStage ? ` during ${run.result.failedStage}` : ''}.</span> {run.reason}
           </Notice>
-        )}
+        </div>
+      )}
+      <div className="relative min-h-0 flex-1">
         <div
           ref={boxRef}
           onScroll={(event) => { const box = event.currentTarget; stickRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 40 }}
-          className="panel min-h-0 flex-1 overflow-auto bg-[#12181f] p-4 font-mono text-[12.5px] leading-[1.55] text-[#d5dde5]"
+          className="h-full overflow-auto bg-ink px-5 py-4 font-mono text-[12.5px] leading-[1.6] text-[#c9d6da]"
           tabIndex={0} aria-label="Solver log output"
         >
-          {loading && <div className="flex items-center gap-2 text-[#8d9aa7]"><Spinner size={13} /> Loading log…</div>}
-          {!loading && lines.length === 0 && <div className="text-[#8d9aa7]">{run.job?.state === 'queued' ? 'Waiting for a free solver slot…' : 'No log output.'}</div>}
-          {skipped > 0 && <div className="mb-2 text-[#8d9aa7]">… {skipped.toLocaleString()} earlier lines not shown. Download the full log to see everything.</div>}
+          {loading && <div className="flex items-center gap-2 text-[#7f9096]"><Spinner size={12} /> loading log</div>}
+          {!loading && lines.length === 0 && <div className="text-[#7f9096]">{run.job?.state === 'queued' ? `Waiting for a free solver slot (position ${run.job.position}).` : 'No log output.'}</div>}
+          {skipped > 0 && <div className="mb-2 text-[#7f9096]">{skipped.toLocaleString()} earlier lines not shown. Download the full log to see everything.</div>}
           {lines.map((line, index) => (
-            <div key={index} className={cn('whitespace-pre', line.startsWith('────') && 'mt-2 font-bold text-[#6fd0f5]', /FOAM FATAL|FOAM exiting|^Stopped:/.test(line) && 'text-[#ff8f8f]', /^--> FOAM Warning/.test(line) && 'text-[#f5cf6f]')}>{line || ' '}</div>
+            <div key={index} className={cn('whitespace-pre', line.startsWith('────') && 'mt-3 font-medium text-[#5ec962]', /FOAM FATAL|FOAM exiting|^Stopped:/.test(line) && 'text-[#ff9a8f]', /^--> FOAM Warning/.test(line) && 'text-[#fde725]')}>{line || ' '}</div>
           ))}
+        </div>
+        <div className="absolute right-5 top-3 flex items-center gap-3">
+          {active && <span className="t-mono flex items-center gap-1.5 bg-ink px-2 py-1 text-[11px] text-[#5ec962]"><Spinner size={11} /> live</span>}
+          {run.result && !STATIC_DEMO && (
+            <a className="inline-flex h-8 items-center gap-2 bg-paper px-3 text-[13px] font-medium text-ink hover:bg-wash" href={api.logDownloadUrl(tutorialId, run.id)}>
+              <Download size={14} /> Full log
+            </a>
+          )}
         </div>
       </div>
     </div>

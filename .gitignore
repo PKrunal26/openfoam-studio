@@ -31,6 +31,7 @@ RELEASE_CHECKLIST.md
 
 # Classroom server runtime data (accounts, results cache)
 classroom/data/
+classroom/data-dev/
 classroom/web/dist/
 classroom/dist/
 classroom/.env
