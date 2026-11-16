@@ -176,7 +176,52 @@ export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message) }
 }
 
+/**
+ * Static preview build (VITE_STATIC_DEMO=1): no server. Reads come from JSON
+ * exported next to the page; anything that would change state is refused.
+ */
+export const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1'
+const READ_ONLY = 'This is a read-only preview. Changing settings and running simulations need the live classroom server.'
+
+async function staticRequest(method: string, path: string): Promise<unknown> {
+  const load = async (file: string) => {
+    const response = await fetch(`data/${file}`)
+    if (!response.ok) throw new ApiError(response.status, 'Not available in this preview.')
+    return response.json()
+  }
+  if (method !== 'GET') {
+    if (path === '/session/logout') return { ok: true }
+    throw new ApiError(403, READ_ONLY)
+  }
+  if (path === '/session') return { className: 'Interactive preview', student: { id: 'preview', name: 'Preview Student' }, requiresClassCode: false, instructor: false, instructorEnabled: false }
+  if (path === '/status') return { compute: { online: false, running: 0, queued: 0, slots: 0 }, mine: [] }
+  if (path === '/tutorials') return load('tutorials.json')
+  const match = /^\/tutorials\/([^/]+)(\/[^?]*)?/.exec(path)
+  if (!match) throw new ApiError(404, 'Not available in this preview.')
+  const [, id, rest = ''] = match
+  if (rest === '') return load(`${id}/tutorial.json`)
+  if (rest === '/workspace') return ((await load(`${id}/tutorial.json`)) as { workspace: unknown }).workspace
+  if (rest === '/files' || rest === '/runs/reference/files') return load(`${id}/files.json`)
+  if (rest === '/runs/reference/log') return load(`${id}/log.json`)
+  if (rest === '/runs/reference/convergence') return load(`${id}/convergence.json`)
+  if (rest === '/runs/reference/vtk/manifest') return load(`${id}/manifest.json`)
+  throw new ApiError(404, 'Not available in this preview.')
+}
+
+/** Text of one result VTK file. */
+export async function fetchVtkText(tutorialId: string, runId: string, relPath: string, hash: string): Promise<string> {
+  if (STATIC_DEMO) {
+    const response = await fetch(`data/${tutorialId}/vtk/${relPath.replace(/\//g, '__')}.txt`)
+    if (!response.ok) throw new Error(`Could not load result file (${response.status})`)
+    return response.text()
+  }
+  const response = await fetch(api.vtkUrl(tutorialId, runId, relPath, hash), { credentials: 'same-origin' })
+  if (!response.ok) throw new Error(`Could not load result file (${response.status})`)
+  return response.text()
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  if (STATIC_DEMO) return (await staticRequest(method, path)) as T
   let response: Response
   try {
     response = await fetch(`/api${path}`, {
@@ -223,7 +268,7 @@ export const api = {
   vtkUrl: (id: string, runId: string, relPath: string, hash: string) =>
     `/api${r(id, runId)}/vtk/file?path=${encodeURIComponent(relPath)}&h=${hash.slice(0, 10)}`,
   logDownloadUrl: (id: string, runId: string) => `/api${r(id, runId)}/log.txt`,
-  thumbnailUrl: (id: string) => `/api${t(id)}/thumbnail`,
+  thumbnailUrl: (id: string) => (STATIC_DEMO ? `data/${id}/thumbnail.jpg` : `/api${t(id)}/thumbnail`),
   adminLogin: (code: string) => request<{ ok: boolean }>('POST', '/admin/login', { code }),
   adminOverview: () => request<AdminOverview>('GET', '/admin/overview'),
   adminRebake: (force: boolean, tutorials?: string[]) => request<{ ok: boolean }>('POST', '/admin/rebake', { force, ...(tutorials ? { tutorials } : {}) }),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download } from 'lucide-react'
-import { api, isActive, type RunView } from '@c/api'
+import { api, isActive, STATIC_DEMO, type RunView } from '@c/api'
 import { useWorkbench } from '@c/store'
 import { Notice, Spinner, cn } from '@c/ui/primitives'
 import { statusText } from './icons'
@@ -57,7 +57,7 @@ export function LogView({ run }: { run: RunView }) {
           </div>
           <div className="flex items-center gap-3">
             {active && <span className="flex items-center gap-2 text-[14px] text-accent-foreground"><Spinner size={15} /> Live</span>}
-            {run.result && (
+            {run.result && !STATIC_DEMO && (
               <a className="inline-flex h-9 items-center gap-2 rounded-md border border-input bg-white px-3 text-[14px] font-bold hover:bg-muted" href={api.logDownloadUrl(tutorialId, run.id)}>
                 <Download size={16} /> Download full log
               </a>

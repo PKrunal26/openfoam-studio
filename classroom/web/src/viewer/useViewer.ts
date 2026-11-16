@@ -16,7 +16,7 @@ import { ResultsDataSource, type FieldInfo, type LoadedStep } from '@/lib/vtk/re
 import { computeRange, extractComponent } from '@/lib/vtk/fieldStats'
 import { interpolateField, slicePlane } from '@/lib/vtk/slice'
 import { tetrahedralize } from '@/lib/vtk/tetrahedralize'
-import { api, type TutorialDef } from '@c/api'
+import { api, fetchVtkText, type TutorialDef } from '@c/api'
 import type { DisplayState } from '@c/store'
 
 type Vec3 = [number, number, number]
@@ -72,11 +72,7 @@ function getSource(tutorialId: string, runId: string, hash: string): Promise<Sou
   const cached = sources.get(key)
   if (cached) return cached
   const promise = api.manifest(tutorialId, runId).then((manifest) => {
-    const fetchFile = async (relPath: string) => {
-      const response = await fetch(api.vtkUrl(tutorialId, runId, relPath, manifest.hash), { credentials: 'same-origin' })
-      if (!response.ok) throw new Error(`Could not load result file (${response.status})`)
-      return response.text()
-    }
+    const fetchFile = (relPath: string) => fetchVtkText(tutorialId, runId, relPath, manifest.hash)
     const volumeOnly = { times: manifest.series.times, steps: manifest.series.steps.map((step) => ({ ...step, patches: {} })) }
     return { fields: new ResultsDataSource(volumeOnly, fetchFile), geometry: new ResultsDataSource(manifest.series, fetchFile), times: manifest.series.times }
   })
