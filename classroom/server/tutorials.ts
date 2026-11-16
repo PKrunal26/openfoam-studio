@@ -4,7 +4,7 @@
  *
  * A tutorial's case files are templates. `{{ expression }}` placeholders are the
  * only thing a parameter can influence, and parameters are range-checked numbers
- * or one of a fixed list of options — a student cannot inject dictionary text
+ * or one of a fixed list of options: a student cannot inject dictionary text
  * through the forms. Whole-file overrides (advanced editing) are checked with
  * the same dictionary policy the desktop app uses before anything is executed.
  */
@@ -17,7 +17,7 @@ import { OPENFOAM_IMAGE } from '../../core/docker/CommandRunner.js'
 import { evaluateNumber, renderTemplate, type Scope, type Value } from './expr.js'
 
 /** Bump when the run pipeline changes in a way that invalidates stored results. */
-export const PIPELINE_VERSION = 1
+export const PIPELINE_VERSION = 2
 
 export interface ParamOption { value: number | string; label: string }
 
@@ -79,6 +79,13 @@ export interface PatchDef {
   kind: 'inlet' | 'outlet' | 'wall' | 'movingWall' | 'open' | 'empty'
 }
 
+export interface MonitorDef {
+  title: string
+  yLabel?: string
+  /** `file` is the function-object name under postProcessing/; `column` a name from its header. */
+  series: { file: string; column: string; label: string }[]
+}
+
 export interface TutorialDef {
   id: string
   order: number
@@ -102,7 +109,13 @@ export interface TutorialDef {
     steady: boolean
     /** Expression for the final solver time, used for the progress bar. */
     endTime: string
+    /** Leave the t = 0 state out of the exported results. */
+    skipInitial?: boolean
   }
+  /** Parameter sets used by the guide's exercises, solved by `npm run classroom:verify`. */
+  verify?: { values: Record<string, unknown>; expect?: 'succeeded' | 'failed' }[]
+  /** Time histories written by function objects (forces, patch averages) shown as plots. */
+  monitors?: MonitorDef[]
   results: {
     defaultField: string
     fields: Record<string, { label: string; unit: string }>
@@ -289,6 +302,11 @@ function validateDefinition(def: TutorialDef, dirName: string): void {
   }
   if (!def.run || !(def.run.maxWallSeconds > 0) || !Array.isArray(def.run.fields)) fail(t, 'run settings are incomplete')
   for (const field of def.run.fields) if (!/^[\w.]+$/.test(field)) fail(t, `invalid field name "${field}"`)
+  def.monitors ??= []
+  for (const monitor of def.monitors) {
+    if (!monitor.title || !monitor.series?.length) fail(t, 'monitor needs a title and series')
+    for (const series of monitor.series) if (!/^\w+$/.test(series.file) || !series.column || !series.label) fail(t, `invalid monitor series in "${monitor.title}"`)
+  }
   if (!def.results?.defaultField || !def.results.fields?.[def.results.defaultField]) fail(t, 'results.defaultField must be listed in results.fields')
 }
 

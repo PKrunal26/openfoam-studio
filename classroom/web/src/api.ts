@@ -148,6 +148,7 @@ export interface Convergence {
   courantMax: (number | null)[]
   steps: number
   live: boolean
+  monitors: { title: string; yLabel: string; times: number[]; series: { label: string; values: (number | null)[] }[] }[]
 }
 
 export interface VtkSeriesStep { time: number; internal?: string; patches: Record<string, string> }

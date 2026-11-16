@@ -15,6 +15,7 @@ core/                   Reusable Node.js modules (AgentLoop, tools, DocsIndex, F
 tests/                  Stage-gated, never skip stages
 wiki/                   CFD knowledge base in markdown, no vector DB — shipped inside packaged builds
 docs/openfoam-v13/      Optional scraped OpenFOAM 13 user guide (run `npm run scrape:docs` to populate)
+classroom/              Hosted multi-student web app (pre-solved tutorials, no LLM); see docs/CLASSROOM.md
 
 ## Stack
 Electron shell + Vite + React + TypeScript renderer
@@ -29,8 +30,8 @@ Results tab: own legacy-VTK parser + engine in renderer/lib/vtk/ — React compo
 ## Dev / build
 `npm run dev`           Vite dev server + Electron (OFS_DEV=1, proxies :5173)
 `npm run build:renderer`  Build renderer to renderer/dist/
-`npm run build:mac`     Package macOS app to dist/
-`npm run build:win`     Package Windows app to dist/
+`npm run build:mac` / `build:win`  Package macOS / Windows app to dist/
+`npm run classroom:build|start|dev|bake`  Classroom web app (server on :8080, Vite on :5174)
 Releases: CI builds both installers on push to main (.github/workflows/build-mac.yml →
 tag `mac-latest`, build-windows.yml → tag `windows-latest`). Packaged app needs no
 system Node — Electron's own Node runs the pre-bundled demo/server.compiled.js.
@@ -71,7 +72,8 @@ npm run test:stage4    # Ghia benchmark physics validation (~8 min)
 npm run test:stage5    # Conversation + recovery tests
 npm run test:agent     # Agent tools + DocsIndex unit tests (~1 sec, no LLM)
 npm run test:postprocess # Results-tab VTK parser/surface/series unit tests (~1 sec, no Docker)
-npm run test:unit      # All of tests/unit (agent + postprocess + paths + health + renderer), ~2 sec
+npm run test:unit      # All of tests/unit (agent + postprocess + paths + health + renderer + classroom), ~5 sec
+npm run classroom:verify # Classroom only: solves every tutorial option + guide exercise in Docker (~6 min)
 
 ## Stage 0 success definition
 All 5 tests pass:

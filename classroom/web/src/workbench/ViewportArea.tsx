@@ -20,12 +20,13 @@ function Legend({ info, display, fields }: { info: ViewerInfo; display: DisplayS
   const vector = (info.fields.find((field) => field.name === display.field)?.numComponents ?? 1) > 1
   const component = vector ? (display.component === -1 ? ' magnitude' : ` ${'xyz'[display.component]}`) : ''
   const [lo, hi] = info.range
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => lo + t * (hi - lo))
+  // Snap numerical noise around zero (e.g. -4e-19 for a phase fraction) to a clean 0.
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => lo + t * (hi - lo)).map((value) => (Math.abs(value) < (hi - lo) * 1e-6 ? 0 : value))
   return (
     <div className="panel-float w-[300px] px-3.5 pb-2.5 pt-3">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <span className="truncate text-[14.5px] font-bold">{meta.label}{component}</span>
-        {meta.unit && <span className="shrink-0 text-[13px] text-muted-foreground">{meta.unit}</span>}
+        {meta.unit && meta.unit !== '–' && <span className="shrink-0 text-[13px] text-muted-foreground">{meta.unit}</span>}
       </div>
       <div className="h-3.5 rounded-sm" style={{ background: colormapGradient(display.colormap) }} />
       <div className="mt-1 flex justify-between text-[12px] tabular-nums text-[#4b5661]">
@@ -259,12 +260,13 @@ export function ViewportArea({ hidden }: { hidden: boolean }) {
           <IconButton label="Save image" onClick={() => void saveImage()}><Camera size={18} /></IconButton>
         </div>
         <div className="pointer-events-auto">
-          {mode === 'results' ? <Legend info={info} display={display} fields={tutorial.results.fields} /> : scene ? <GeometryPanel highlighted={highlight} available={info.patches} /> : null}
+          {mode === 'results' ? <Legend info={info} display={display} fields={tutorial.results.fields} />
+            : scene && !(item && freeWidth < 760) ? <GeometryPanel highlighted={highlight} available={info.patches} /> : null}
         </div>
       </div>
 
       {mode === 'results' && (
-        <div className="pointer-events-none absolute right-0 bottom-5 flex justify-center px-4" style={{ left: leftCover ? leftPanel + 16 : 0 }}>
+        <div className="pointer-events-none absolute right-0 bottom-5 flex justify-center pl-4 pr-[150px]" style={{ left: leftCover ? leftPanel + 16 : 0 }}>
           <div className="pointer-events-auto min-w-0"><TimeTransport info={info} steady={tutorial.run.steady} /></div>
         </div>
       )}

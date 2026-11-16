@@ -8,152 +8,590 @@
   "analysisType": "Incompressible",
   "solver": "incompressibleFluid",
   "dimension": "2D",
-  "tags": ["RANS", "steady", "SIMPLE", "k-epsilon"],
+  "tags": [
+    "RANS",
+    "steady",
+    "SIMPLE",
+    "k-epsilon"
+  ],
   "estimatedRuntime": "about 20 s",
   "geometry": {
     "name": "Step channel",
     "description": "Step height H = 25 mm. Inlet channel 4H long, 16H of channel behind the step (2D).",
     "patches": [
-      { "name": "inlet", "label": "Inlet", "kind": "inlet" },
-      { "name": "outlet", "label": "Outlet", "kind": "outlet" },
-      { "name": "upperWall", "label": "Upper wall", "kind": "wall" },
-      { "name": "lowerWall", "label": "Lower wall and step", "kind": "wall" },
-      { "name": "frontAndBack", "label": "Front and back", "kind": "empty" }
+      {
+        "name": "inlet",
+        "label": "Inlet",
+        "kind": "inlet"
+      },
+      {
+        "name": "outlet",
+        "label": "Outlet",
+        "kind": "outlet"
+      },
+      {
+        "name": "upperWall",
+        "label": "Upper wall",
+        "kind": "wall"
+      },
+      {
+        "name": "lowerWall",
+        "label": "Lower wall and step",
+        "kind": "wall"
+      },
+      {
+        "name": "frontAndBack",
+        "label": "Front and back",
+        "kind": "empty"
+      }
     ]
   },
   "params": [
-    { "id": "Uin", "label": "Inlet velocity", "symbol": "U", "unit": "m/s", "type": "number", "default": 10, "min": 0.5, "max": 40 },
-    { "id": "intensity", "label": "Turbulence intensity", "symbol": "I", "unit": "%", "type": "number", "default": 5, "min": 0.1, "max": 30,
-      "help": "Velocity fluctuation at the inlet as a percentage of the mean velocity." },
-    { "id": "nu", "label": "Kinematic viscosity", "symbol": "ν", "unit": "m²/s", "type": "number", "default": 0.00001, "min": 0.0000005, "max": 0.001,
-      "help": "1e-5 m²/s is roughly air at room temperature." },
-    { "id": "model", "label": "Turbulence model", "type": "select", "default": "kEpsilon",
+    {
+      "id": "Uin",
+      "label": "Inlet velocity",
+      "symbol": "U",
+      "unit": "m/s",
+      "type": "number",
+      "default": 10,
+      "min": 0.5,
+      "max": 40
+    },
+    {
+      "id": "intensity",
+      "label": "Turbulence intensity",
+      "symbol": "I",
+      "unit": "%",
+      "type": "number",
+      "default": 5,
+      "min": 0.1,
+      "max": 30,
+      "help": "Velocity fluctuation at the inlet as a percentage of the mean velocity."
+    },
+    {
+      "id": "nu",
+      "label": "Kinematic viscosity",
+      "symbol": "ν",
+      "unit": "m²/s",
+      "type": "number",
+      "default": 1e-05,
+      "min": 5e-07,
+      "max": 0.001,
+      "help": "1e-5 m²/s is roughly air at room temperature."
+    },
+    {
+      "id": "model",
+      "label": "Turbulence model",
+      "type": "select",
+      "default": "kEpsilon",
       "options": [
-        { "value": "kEpsilon", "label": "k-epsilon (standard)" },
-        { "value": "realizableKE", "label": "Realizable k-epsilon" },
-        { "value": "RNGkEpsilon", "label": "RNG k-epsilon" },
-        { "value": "kOmegaSST", "label": "k-omega SST" }
+        {
+          "value": "kEpsilon",
+          "label": "k-epsilon (standard)"
+        },
+        {
+          "value": "realizableKE",
+          "label": "Realizable k-epsilon"
+        },
+        {
+          "value": "RNGkEpsilon",
+          "label": "RNG k-epsilon"
+        },
+        {
+          "value": "kOmegaSST",
+          "label": "k-omega SST"
+        }
       ],
-      "help": "All models here use wall functions at the walls." },
-    { "id": "convection", "label": "Velocity convection scheme", "type": "select", "default": "linearUpwind grad(U)",
+      "help": "All models here use wall functions at the walls."
+    },
+    {
+      "id": "convection",
+      "label": "Velocity convection scheme",
+      "type": "select",
+      "default": "linearUpwind grad(U)",
       "options": [
-        { "value": "linearUpwind grad(U)", "label": "linearUpwind (2nd order)" },
-        { "value": "limitedLinear 1", "label": "limitedLinear (2nd order, TVD)" },
-        { "value": "upwind", "label": "upwind (1st order, diffusive)" }
+        {
+          "value": "linearUpwind grad(U)",
+          "label": "linearUpwind (2nd order)"
+        },
+        {
+          "value": "limitedLinear 1",
+          "label": "limitedLinear (2nd order, TVD)"
+        },
+        {
+          "value": "upwind",
+          "label": "upwind (1st order, diffusive)"
+        }
       ],
-      "help": "First-order upwind is very robust but smears the shear layer and shortens the recirculation zone." },
-    { "id": "relax", "label": "Relaxation factor", "type": "number", "default": 0.9, "min": 0.2, "max": 0.98,
-      "help": "Under-relaxation of the momentum and turbulence equations. Lower is more stable but slower." },
-    { "id": "tolerance", "label": "Residual target", "type": "select", "default": 0.001,
+      "help": "First-order upwind is very robust but smears the shear layer and shortens the recirculation zone."
+    },
+    {
+      "id": "relax",
+      "label": "Relaxation factor",
+      "type": "number",
+      "default": 0.9,
+      "min": 0.2,
+      "max": 0.98,
+      "help": "Under-relaxation of the momentum and turbulence equations. Lower is more stable but slower."
+    },
+    {
+      "id": "tolerance",
+      "label": "Residual target",
+      "type": "select",
+      "default": 0.001,
       "options": [
-        { "value": 0.001, "label": "1e-3 (reference)" },
-        { "value": 0.0001, "label": "1e-4 (tight)" },
-        { "value": 0.00001, "label": "1e-5 (very tight)" }
+        {
+          "value": 0.001,
+          "label": "1e-3 (reference)"
+        },
+        {
+          "value": 0.0001,
+          "label": "1e-4 (tight)"
+        },
+        {
+          "value": 1e-05,
+          "label": "1e-5 (very tight)"
+        }
       ],
-      "help": "The run stops when every initial residual falls below this value." },
-    { "id": "iterations", "label": "Maximum iterations", "type": "number", "integer": true, "default": 1000, "min": 50, "max": 4000 },
-    { "id": "refine", "label": "Mesh resolution", "type": "select", "default": 1,
+      "help": "The run stops when every initial residual falls below this value."
+    },
+    {
+      "id": "iterations",
+      "label": "Maximum iterations",
+      "type": "number",
+      "integer": true,
+      "default": 1000,
+      "min": 50,
+      "max": 4000
+    },
+    {
+      "id": "refine",
+      "label": "Mesh resolution",
+      "type": "select",
+      "default": 1,
       "options": [
-        { "value": 0.5, "label": "Coarse (5 cells per step height)" },
-        { "value": 1, "label": "Reference (10 cells per step height)" },
-        { "value": 1.5, "label": "Fine (15 cells per step height)" },
-        { "value": 2, "label": "Very fine (20 cells per step height)" }
-      ] }
+        {
+          "value": 0.5,
+          "label": "Coarse (5 cells per step height)"
+        },
+        {
+          "value": 1,
+          "label": "Reference (10 cells per step height)"
+        },
+        {
+          "value": 1.5,
+          "label": "Fine (15 cells per step height)"
+        },
+        {
+          "value": 2,
+          "label": "Very fine (20 cells per step height)"
+        }
+      ]
+    }
   ],
   "derived": [
-    { "id": "Re", "label": "Reynolds number (step height)", "symbol": "Re", "expr": "Uin * 0.025 / nu", "digits": 4, "help": "Re = U H / ν with H = 25 mm." },
-    { "id": "kIn", "label": "Inlet turbulent kinetic energy", "symbol": "k", "unit": "m²/s²", "expr": "1.5 * (Uin * intensity / 100)^2", "digits": 4, "help": "k = 3/2 (U I)²" },
-    { "id": "epsIn", "label": "Inlet dissipation rate", "symbol": "ε", "unit": "m²/s³", "expr": "0.09^0.75 * kIn^1.5 / 0.00175", "digits": 4, "help": "ε = Cμ^0.75 k^1.5 / l, mixing length l = 0.07 × inlet height." },
-    { "id": "omegaIn", "label": "Inlet specific dissipation", "symbol": "ω", "unit": "1/s", "expr": "sqrt(kIn) / (0.09^0.25 * 0.00175)", "digits": 4 },
-    { "id": "ny", "label": "Cells across each channel half", "expr": "round(10 * refine)", "digits": 4 },
-    { "id": "nxUp", "label": "Cells along inlet channel", "expr": "round(40 * refine)", "digits": 4 },
-    { "id": "nxDown", "label": "Cells along downstream channel", "expr": "round(160 * refine)", "digits": 4 },
-    { "id": "cells", "label": "Total cells", "expr": "ny * nxUp + 2 * ny * nxDown", "digits": 6 }
+    {
+      "id": "Re",
+      "label": "Reynolds number (step height)",
+      "symbol": "Re",
+      "expr": "Uin * 0.025 / nu",
+      "digits": 4,
+      "help": "Re = U H / ν with H = 25 mm."
+    },
+    {
+      "id": "kIn",
+      "label": "Inlet turbulent kinetic energy",
+      "symbol": "k",
+      "unit": "m²/s²",
+      "expr": "1.5 * (Uin * intensity / 100)^2",
+      "digits": 4,
+      "help": "k = 3/2 (U I)²"
+    },
+    {
+      "id": "epsIn",
+      "label": "Inlet dissipation rate",
+      "symbol": "ε",
+      "unit": "m²/s³",
+      "expr": "0.09^0.75 * kIn^1.5 / 0.00175",
+      "digits": 4,
+      "help": "ε = Cμ^0.75 k^1.5 / l, mixing length l = 0.07 × inlet height."
+    },
+    {
+      "id": "omegaIn",
+      "label": "Inlet specific dissipation",
+      "symbol": "ω",
+      "unit": "1/s",
+      "expr": "sqrt(kIn) / (0.09^0.25 * 0.00175)",
+      "digits": 4
+    },
+    {
+      "id": "ny",
+      "label": "Cells across each channel half",
+      "expr": "round(10 * refine)",
+      "digits": 4
+    },
+    {
+      "id": "nxUp",
+      "label": "Cells along inlet channel",
+      "expr": "round(40 * refine)",
+      "digits": 4
+    },
+    {
+      "id": "nxDown",
+      "label": "Cells along downstream channel",
+      "expr": "round(160 * refine)",
+      "digits": 4
+    },
+    {
+      "id": "cells",
+      "label": "Total cells",
+      "expr": "ny * nxUp + 2 * ny * nxDown",
+      "digits": 6
+    }
   ],
   "constraints": [
-    { "expr": "cells * iterations <= 60000000", "message": "This mesh and iteration count is too expensive for the classroom server. Lower the maximum iterations or coarsen the mesh." }
+    {
+      "expr": "cells * iterations <= 60000000",
+      "message": "This mesh and iteration count is too expensive for the classroom server. Lower the maximum iterations or coarsen the mesh."
+    }
   ],
   "sections": [
-    { "node": "model", "items": [
-      { "id": "turbulence", "label": "Turbulence", "icon": "model",
-        "description": "Reynolds-averaged (RANS) turbulence modelling: the solver computes the mean flow, and the model supplies the effect of the turbulent fluctuations as an eddy viscosity.",
-        "files": ["constant/momentumTransport"],
-        "rows": [{ "label": "Simulation type", "value": "RAS (steady RANS)" }],
-        "params": ["model"] }
-    ] },
-    { "node": "materials", "items": [
-      { "id": "fluid", "label": "Air", "icon": "fluid",
-        "description": "Newtonian fluid with constant kinematic viscosity.",
-        "files": ["constant/physicalProperties"],
-        "rows": [{ "label": "Viscosity model", "value": "Newtonian (constant)" }],
-        "params": ["nu"], "derived": ["Re"] }
-    ] },
-    { "node": "initialConditions", "items": [
-      { "id": "initial", "label": "Initial conditions", "icon": "initial",
-        "description": "A steady solution does not depend on the starting guess, but a sensible one converges faster. Turbulence fields start from the inlet values.",
-        "files": ["0/U", "0/p", "0/k", "0/epsilon", "0/omega"],
-        "rows": [
-          { "label": "(U) Velocity", "value": "(0 0 0) m/s" },
-          { "label": "(p) Kinematic pressure", "value": "0 m²/s²" },
-          { "label": "(k, ε, ω)", "value": "inlet values" }
-        ] }
-    ] },
-    { "node": "boundaryConditions", "items": [
-      { "id": "bcInlet", "label": "Velocity inlet", "icon": "inlet", "patches": ["inlet"],
-        "description": "Uniform velocity with turbulence quantities estimated from an intensity and a mixing length.",
-        "files": ["0/U", "0/k", "0/epsilon", "0/omega"],
-        "rows": [{ "label": "Velocity type", "value": "fixedValue" }, { "label": "Pressure type", "value": "zeroGradient" }],
-        "params": ["Uin", "intensity"], "derived": ["kIn", "epsIn", "omegaIn"] },
-      { "id": "bcOutlet", "label": "Pressure outlet", "icon": "outlet", "patches": ["outlet"],
-        "description": "Fixed static pressure; every other quantity leaves with zero gradient.",
-        "files": ["0/U", "0/p"],
-        "rows": [{ "label": "Pressure type", "value": "fixedValue 0" }, { "label": "Velocity type", "value": "zeroGradient" }] },
-      { "id": "bcWalls", "label": "Walls", "icon": "wall", "patches": ["upperWall", "lowerWall"],
-        "description": "No-slip walls. Wall functions bridge the near-wall layer so the mesh does not have to resolve it.",
-        "files": ["0/U", "0/k", "0/epsilon", "0/omega", "0/nut"],
-        "rows": [
-          { "label": "Velocity type", "value": "noSlip" },
-          { "label": "k", "value": "kqRWallFunction" },
-          { "label": "ε / ω", "value": "epsilon / omegaWallFunction" },
-          { "label": "νt", "value": "nutkWallFunction" }
-        ] },
-      { "id": "bcEmpty", "label": "Front and back", "icon": "empty", "patches": ["frontAndBack"],
-        "description": "Empty patches make the case two-dimensional.",
-        "rows": [{ "label": "Type", "value": "empty" }] }
-    ] },
-    { "node": "numerics", "items": [
-      { "id": "numerics", "label": "Numerics", "icon": "numerics",
-        "description": "Steady-state SIMPLE(C) pressure-velocity coupling with under-relaxation.",
-        "files": ["system/fvSchemes", "system/fvSolution"],
-        "rows": [
-          { "label": "Time scheme", "value": "steadyState" },
-          { "label": "Algorithm", "value": "SIMPLEC (consistent yes)" }
-        ],
-        "params": ["convection", "relax", "tolerance"] }
-    ] },
-    { "node": "simulationControl", "items": [
-      { "id": "control", "label": "Simulation control", "icon": "control",
-        "description": "In a steady case, each \"time step\" is one SIMPLE iteration.",
-        "files": ["system/controlDict"],
-        "params": ["iterations"] }
-    ] },
-    { "node": "mesh", "items": [
-      { "id": "mesh", "label": "Mesh", "icon": "mesh",
-        "description": "Three hexahedral blocks from blockMesh: the inlet channel and two blocks behind the step.",
-        "files": ["system/blockMeshDict"],
-        "rows": [{ "label": "Mesher", "value": "blockMesh (hexahedral)" }],
-        "params": ["refine"], "derived": ["cells"] }
-    ] }
+    {
+      "node": "model",
+      "items": [
+        {
+          "id": "turbulence",
+          "label": "Turbulence",
+          "icon": "model",
+          "description": "Reynolds-averaged (RANS) turbulence modelling: the solver computes the mean flow, and the model supplies the effect of the turbulent fluctuations as an eddy viscosity.",
+          "files": [
+            "constant/momentumTransport"
+          ],
+          "rows": [
+            {
+              "label": "Simulation type",
+              "value": "RAS (steady RANS)"
+            }
+          ],
+          "params": [
+            "model"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "materials",
+      "items": [
+        {
+          "id": "fluid",
+          "label": "Air",
+          "icon": "fluid",
+          "description": "Newtonian fluid with constant kinematic viscosity.",
+          "files": [
+            "constant/physicalProperties"
+          ],
+          "rows": [
+            {
+              "label": "Viscosity model",
+              "value": "Newtonian (constant)"
+            }
+          ],
+          "params": [
+            "nu"
+          ],
+          "derived": [
+            "Re"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "initialConditions",
+      "items": [
+        {
+          "id": "initial",
+          "label": "Initial conditions",
+          "icon": "initial",
+          "description": "A steady solution does not depend on the starting guess, but a sensible one converges faster. Turbulence fields start from the inlet values.",
+          "files": [
+            "0/U",
+            "0/p",
+            "0/k",
+            "0/epsilon",
+            "0/omega"
+          ],
+          "rows": [
+            {
+              "label": "(U) Velocity",
+              "value": "(0 0 0) m/s"
+            },
+            {
+              "label": "(p) Kinematic pressure",
+              "value": "0 m²/s²"
+            },
+            {
+              "label": "(k, ε, ω)",
+              "value": "inlet values"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "boundaryConditions",
+      "items": [
+        {
+          "id": "bcInlet",
+          "label": "Velocity inlet",
+          "icon": "inlet",
+          "patches": [
+            "inlet"
+          ],
+          "description": "Uniform velocity with turbulence quantities estimated from an intensity and a mixing length.",
+          "files": [
+            "0/U",
+            "0/k",
+            "0/epsilon",
+            "0/omega"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "fixedValue"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ],
+          "params": [
+            "Uin",
+            "intensity"
+          ],
+          "derived": [
+            "kIn",
+            "epsIn",
+            "omegaIn"
+          ]
+        },
+        {
+          "id": "bcOutlet",
+          "label": "Pressure outlet",
+          "icon": "outlet",
+          "patches": [
+            "outlet"
+          ],
+          "description": "Fixed static pressure; every other quantity leaves with zero gradient.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Pressure type",
+              "value": "fixedValue 0"
+            },
+            {
+              "label": "Velocity type",
+              "value": "zeroGradient"
+            }
+          ]
+        },
+        {
+          "id": "bcWalls",
+          "label": "Walls",
+          "icon": "wall",
+          "patches": [
+            "upperWall",
+            "lowerWall"
+          ],
+          "description": "No-slip walls. Wall functions bridge the near-wall layer so the mesh does not have to resolve it.",
+          "files": [
+            "0/U",
+            "0/k",
+            "0/epsilon",
+            "0/omega",
+            "0/nut"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            },
+            {
+              "label": "k",
+              "value": "kqRWallFunction"
+            },
+            {
+              "label": "ε / ω",
+              "value": "epsilon / omegaWallFunction"
+            },
+            {
+              "label": "νt",
+              "value": "nutkWallFunction"
+            }
+          ]
+        },
+        {
+          "id": "bcEmpty",
+          "label": "Front and back",
+          "icon": "empty",
+          "patches": [
+            "frontAndBack"
+          ],
+          "description": "Empty patches make the case two-dimensional.",
+          "rows": [
+            {
+              "label": "Type",
+              "value": "empty"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "numerics",
+      "items": [
+        {
+          "id": "numerics",
+          "label": "Numerics",
+          "icon": "numerics",
+          "description": "Steady-state SIMPLE(C) pressure-velocity coupling with under-relaxation.",
+          "files": [
+            "system/fvSchemes",
+            "system/fvSolution"
+          ],
+          "rows": [
+            {
+              "label": "Time scheme",
+              "value": "steadyState"
+            },
+            {
+              "label": "Algorithm",
+              "value": "SIMPLEC (consistent yes)"
+            }
+          ],
+          "params": [
+            "convection",
+            "relax",
+            "tolerance"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "simulationControl",
+      "items": [
+        {
+          "id": "control",
+          "label": "Simulation control",
+          "icon": "control",
+          "description": "In a steady case, each \"time step\" is one SIMPLE iteration.",
+          "files": [
+            "system/controlDict"
+          ],
+          "params": [
+            "iterations"
+          ],
+          "rows": [
+            {
+              "label": "Monitors",
+              "value": "inlet pressure, every iteration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "mesh",
+      "items": [
+        {
+          "id": "mesh",
+          "label": "Mesh",
+          "icon": "mesh",
+          "description": "Three hexahedral blocks from blockMesh: the inlet channel and two blocks behind the step.",
+          "files": [
+            "system/blockMeshDict"
+          ],
+          "rows": [
+            {
+              "label": "Mesher",
+              "value": "blockMesh (hexahedral)"
+            }
+          ],
+          "params": [
+            "refine"
+          ],
+          "derived": [
+            "cells"
+          ]
+        }
+      ]
+    }
   ],
-  "run": { "maxWallSeconds": 600, "fields": ["U", "p", "k", "nut"], "steady": true, "endTime": "iterations" },
+  "run": {
+    "maxWallSeconds": 600,
+    "fields": [
+      "U",
+      "p",
+      "k",
+      "nut"
+    ],
+    "steady": true,
+    "endTime": "iterations"
+  },
   "results": {
     "defaultField": "U",
     "fields": {
-      "U": { "label": "Velocity", "unit": "m/s" },
-      "p": { "label": "Kinematic pressure", "unit": "m²/s²" },
-      "k": { "label": "Turbulent kinetic energy", "unit": "m²/s²" },
-      "nut": { "label": "Turbulent viscosity", "unit": "m²/s" }
+      "U": {
+        "label": "Velocity",
+        "unit": "m/s"
+      },
+      "p": {
+        "label": "Kinematic pressure",
+        "unit": "m²/s²"
+      },
+      "k": {
+        "label": "Turbulent kinetic energy",
+        "unit": "m²/s²"
+      },
+      "nut": {
+        "label": "Turbulent viscosity",
+        "unit": "m²/s"
+      }
     },
     "view": "+Z"
-  }
+  },
+  "monitors": [
+    {
+      "title": "Inlet pressure",
+      "yLabel": "p / ρ (m²/s²)",
+      "series": [
+        {
+          "file": "inletPressure",
+          "column": "areaAverage(p)",
+          "label": "Inlet (area average)"
+        }
+      ]
+    }
+  ],
+  "verify": [
+    {
+      "values": {
+        "tolerance": 0.0001
+      }
+    },
+    {
+      "values": {
+        "tolerance": 0.0001,
+        "convection": "upwind"
+      }
+    },
+    {
+      "values": {
+        "model": "kOmegaSST",
+        "convection": "upwind"
+      }
+    }
+  ]
 }

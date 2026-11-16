@@ -1,0 +1,581 @@
+{
+  "id": "heated-cavity",
+  "order": 6,
+  "title": "Heated cavity",
+  "subtitle": "Natural convection between a hot and a cold wall",
+  "summary": "Air in a closed box is heated on one side and cooled on the other. Buoyancy alone sets it circulating. Your first case with an energy equation: thermophysical properties, gravity, the Boussinesq approximation and the Rayleigh number.",
+  "difficulty": "Advanced",
+  "analysisType": "Convective heat transfer",
+  "solver": "fluid",
+  "dimension": "2D",
+  "tags": [
+    "heat transfer",
+    "buoyancy",
+    "transient",
+    "laminar"
+  ],
+  "estimatedRuntime": "about 40 s",
+  "geometry": {
+    "name": "Square cavity",
+    "description": "50 mm × 50 mm air-filled cavity (2D). Left wall hot, right wall cold, top and bottom insulated.",
+    "patches": [
+      {
+        "name": "hotWall",
+        "label": "Hot wall",
+        "kind": "wall"
+      },
+      {
+        "name": "coldWall",
+        "label": "Cold wall",
+        "kind": "wall"
+      },
+      {
+        "name": "adiabaticWalls",
+        "label": "Top and bottom",
+        "kind": "wall"
+      },
+      {
+        "name": "frontAndBack",
+        "label": "Front and back",
+        "kind": "empty"
+      }
+    ]
+  },
+  "params": [
+    {
+      "id": "Thot",
+      "label": "Hot wall temperature",
+      "symbol": "T",
+      "unit": "K",
+      "type": "number",
+      "default": 305,
+      "min": 250,
+      "max": 600
+    },
+    {
+      "id": "Tcold",
+      "label": "Cold wall temperature",
+      "symbol": "T",
+      "unit": "K",
+      "type": "number",
+      "default": 295,
+      "min": 200,
+      "max": 590
+    },
+    {
+      "id": "mu",
+      "label": "Dynamic viscosity",
+      "symbol": "μ",
+      "unit": "Pa·s",
+      "type": "number",
+      "default": 1.846e-05,
+      "min": 1e-06,
+      "max": 0.01,
+      "help": "Air at 300 K is 1.846e-5 Pa·s. A lower value raises the Rayleigh number."
+    },
+    {
+      "id": "Pr",
+      "label": "Prandtl number",
+      "symbol": "Pr",
+      "type": "number",
+      "default": 0.707,
+      "min": 0.01,
+      "max": 100,
+      "help": "Ratio of momentum to thermal diffusivity. Air 0.71, water about 7."
+    },
+    {
+      "id": "gravity",
+      "label": "Gravity",
+      "symbol": "g",
+      "unit": "m/s²",
+      "type": "number",
+      "default": 9.81,
+      "min": 0.1,
+      "max": 50
+    },
+    {
+      "id": "endTime",
+      "label": "End time",
+      "unit": "s",
+      "type": "number",
+      "default": 30,
+      "min": 1,
+      "max": 120
+    },
+    {
+      "id": "maxCo",
+      "label": "Maximum Courant number",
+      "type": "select",
+      "default": 0.5,
+      "options": [
+        {
+          "value": 0.25,
+          "label": "0.25"
+        },
+        {
+          "value": 0.5,
+          "label": "0.5 (reference)"
+        },
+        {
+          "value": 1,
+          "label": "1"
+        }
+      ]
+    },
+    {
+      "id": "convection",
+      "label": "Convection scheme",
+      "type": "select",
+      "default": "limitedLinear 1",
+      "options": [
+        {
+          "value": "limitedLinear 1",
+          "label": "limitedLinear (bounded 2nd order)"
+        },
+        {
+          "value": "linear",
+          "label": "linear (2nd order, central)"
+        },
+        {
+          "value": "upwind",
+          "label": "upwind (1st order, diffusive)"
+        }
+      ],
+      "help": "Used for both momentum and energy."
+    },
+    {
+      "id": "N",
+      "label": "Cells per side",
+      "type": "select",
+      "default": 40,
+      "options": [
+        {
+          "value": 20,
+          "label": "20 × 20 (coarse)"
+        },
+        {
+          "value": 40,
+          "label": "40 × 40 (reference)"
+        },
+        {
+          "value": 60,
+          "label": "60 × 60 (fine)"
+        },
+        {
+          "value": 80,
+          "label": "80 × 80 (very fine)"
+        }
+      ],
+      "help": "Thin thermal boundary layers at high Rayleigh number need a fine mesh."
+    }
+  ],
+  "derived": [
+    {
+      "id": "dT",
+      "label": "Temperature difference",
+      "symbol": "ΔT",
+      "unit": "K",
+      "expr": "Thot - Tcold",
+      "digits": 4
+    },
+    {
+      "id": "Tmean",
+      "label": "Reference temperature",
+      "symbol": "T₀",
+      "unit": "K",
+      "expr": "(Thot + Tcold) / 2",
+      "digits": 5
+    },
+    {
+      "id": "beta",
+      "label": "Thermal expansion coefficient",
+      "symbol": "β",
+      "unit": "1/K",
+      "expr": "1 / Tmean",
+      "digits": 4,
+      "help": "For an ideal gas β = 1/T."
+    },
+    {
+      "id": "rho0",
+      "label": "Reference density",
+      "symbol": "ρ₀",
+      "unit": "kg/m³",
+      "expr": "101325 / (287 * Tmean)",
+      "digits": 4,
+      "help": "Ideal gas at 1 atm."
+    },
+    {
+      "id": "nuK",
+      "label": "Kinematic viscosity",
+      "symbol": "ν",
+      "unit": "m²/s",
+      "expr": "mu / rho0",
+      "digits": 4
+    },
+    {
+      "id": "Ra",
+      "label": "Rayleigh number",
+      "symbol": "Ra",
+      "expr": "gravity * beta * dT * 0.05^3 * Pr / (nuK * nuK)",
+      "digits": 4,
+      "help": "Ra = g β ΔT L³ / (ν α) with L = 50 mm. It measures buoyancy against diffusion."
+    },
+    {
+      "id": "Ubuoy",
+      "label": "Buoyant velocity scale",
+      "unit": "m/s",
+      "expr": "sqrt(gravity * beta * dT * 0.05)",
+      "digits": 3,
+      "help": "√(g β ΔT L): the order of magnitude of the flow speed."
+    },
+    {
+      "id": "writeEvery",
+      "label": "Write interval",
+      "unit": "s",
+      "expr": "endTime / 20",
+      "digits": 4
+    }
+  ],
+  "constraints": [
+    {
+      "expr": "Thot > Tcold",
+      "message": "The hot wall must be warmer than the cold wall."
+    },
+    {
+      "expr": "N * N * endTime * Ubuoy * N <= 60000000",
+      "message": "This is too expensive for the classroom server. Shorten the end time or coarsen the mesh."
+    },
+    {
+      "expr": "Ra <= 20000000",
+      "message": "At this Rayleigh number the flow turns turbulent and this laminar setup no longer applies. Reduce the temperature difference or raise the viscosity."
+    },
+    {
+      "expr": "dT / Tmean <= 0.1",
+      "level": "warning",
+      "message": "The Boussinesq approximation assumes small density changes (ΔT/T below about 10 %). Results are less accurate for this temperature difference."
+    },
+    {
+      "expr": "Ra <= 2000000",
+      "level": "warning",
+      "message": "Above Ra ≈ 1e6 the wall boundary layers get very thin. Use a finer mesh."
+    }
+  ],
+  "sections": [
+    {
+      "node": "model",
+      "items": [
+        {
+          "id": "gravityItem",
+          "label": "Gravity",
+          "icon": "model",
+          "description": "Without gravity, warm and cold air would not move: buoyancy is the only driving force here.",
+          "files": [
+            "constant/g"
+          ],
+          "rows": [
+            {
+              "label": "Direction",
+              "value": "−y"
+            }
+          ],
+          "params": [
+            "gravity"
+          ],
+          "derived": [
+            "Ubuoy"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "materials",
+      "items": [
+        {
+          "id": "fluid",
+          "label": "Air",
+          "icon": "fluid",
+          "description": "Thermophysical model: constant transport properties, constant heat capacity and a Boussinesq equation of state.",
+          "files": [
+            "constant/physicalProperties"
+          ],
+          "rows": [
+            {
+              "label": "Equation of state",
+              "value": "Boussinesq"
+            },
+            {
+              "label": "(Cv) Heat capacity",
+              "value": "718 J/(kg·K)"
+            }
+          ],
+          "params": [
+            "mu",
+            "Pr"
+          ],
+          "derived": [
+            "rho0",
+            "nuK",
+            "beta",
+            "Ra"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "initialConditions",
+      "items": [
+        {
+          "id": "initial",
+          "label": "Initial conditions",
+          "icon": "initial",
+          "description": "Still air at the mean of the two wall temperatures.",
+          "files": [
+            "0/T",
+            "0/U",
+            "0/p_rgh"
+          ],
+          "rows": [
+            {
+              "label": "(U) Velocity",
+              "value": "(0 0 0) m/s"
+            }
+          ],
+          "derived": [
+            "Tmean"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "boundaryConditions",
+      "items": [
+        {
+          "id": "bcHot",
+          "label": "Hot wall",
+          "icon": "wall",
+          "patches": [
+            "hotWall"
+          ],
+          "description": "Fixed temperature, no-slip.",
+          "files": [
+            "0/T",
+            "0/U",
+            "0/p_rgh"
+          ],
+          "rows": [
+            {
+              "label": "Temperature type",
+              "value": "fixedValue"
+            },
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            }
+          ],
+          "params": [
+            "Thot"
+          ]
+        },
+        {
+          "id": "bcCold",
+          "label": "Cold wall",
+          "icon": "wall",
+          "patches": [
+            "coldWall"
+          ],
+          "description": "Fixed temperature, no-slip.",
+          "files": [
+            "0/T",
+            "0/U",
+            "0/p_rgh"
+          ],
+          "rows": [
+            {
+              "label": "Temperature type",
+              "value": "fixedValue"
+            },
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            }
+          ],
+          "params": [
+            "Tcold"
+          ],
+          "derived": [
+            "dT"
+          ]
+        },
+        {
+          "id": "bcAdiabatic",
+          "label": "Insulated walls",
+          "icon": "wall",
+          "patches": [
+            "adiabaticWalls"
+          ],
+          "description": "No heat crosses the top and bottom walls: zero temperature gradient.",
+          "files": [
+            "0/T",
+            "0/U",
+            "0/p_rgh"
+          ],
+          "rows": [
+            {
+              "label": "Temperature type",
+              "value": "zeroGradient"
+            },
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            }
+          ]
+        },
+        {
+          "id": "bcEmpty",
+          "label": "Front and back",
+          "icon": "empty",
+          "patches": [
+            "frontAndBack"
+          ],
+          "description": "Empty patches make the case two-dimensional.",
+          "rows": [
+            {
+              "label": "Type",
+              "value": "empty"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "numerics",
+      "items": [
+        {
+          "id": "numerics",
+          "label": "Numerics",
+          "icon": "numerics",
+          "description": "The fluid solver module solves momentum, energy and pressure (p_rgh = p − ρ g h) with PIMPLE.",
+          "files": [
+            "system/fvSchemes",
+            "system/fvSolution"
+          ],
+          "rows": [
+            {
+              "label": "Time scheme",
+              "value": "Euler"
+            },
+            {
+              "label": "Energy variable",
+              "value": "internal energy e"
+            }
+          ],
+          "params": [
+            "convection"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "simulationControl",
+      "items": [
+        {
+          "id": "control",
+          "label": "Simulation control",
+          "icon": "control",
+          "description": "The run marches in time until the circulation has settled to a steady state.",
+          "files": [
+            "system/controlDict"
+          ],
+          "rows": [
+            {
+              "label": "Time step",
+              "value": "adaptive"
+            }
+          ],
+          "params": [
+            "endTime",
+            "maxCo"
+          ],
+          "derived": [
+            "writeEvery"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "mesh",
+      "items": [
+        {
+          "id": "mesh",
+          "label": "Mesh",
+          "icon": "mesh",
+          "description": "A uniform block-structured mesh from blockMesh.",
+          "files": [
+            "system/blockMeshDict"
+          ],
+          "rows": [
+            {
+              "label": "Mesher",
+              "value": "blockMesh (hexahedral)"
+            }
+          ],
+          "params": [
+            "N"
+          ]
+        }
+      ]
+    }
+  ],
+  "run": {
+    "maxWallSeconds": 900,
+    "fields": [
+      "T",
+      "U",
+      "p_rgh"
+    ],
+    "steady": false,
+    "endTime": "endTime"
+  },
+  "results": {
+    "defaultField": "T",
+    "fields": {
+      "T": {
+        "label": "Temperature",
+        "unit": "K"
+      },
+      "U": {
+        "label": "Velocity",
+        "unit": "m/s"
+      },
+      "p_rgh": {
+        "label": "Pressure minus hydrostatic",
+        "unit": "Pa"
+      }
+    },
+    "view": "+Z"
+  },
+  "verify": [
+    {
+      "values": {
+        "mu": 0.0003
+      }
+    },
+    {
+      "values": {
+        "Thot": 330,
+        "Tcold": 270,
+        "N": 60
+      }
+    },
+    {
+      "values": {
+        "gravity": 1
+      }
+    },
+    {
+      "values": {
+        "Pr": 7
+      }
+    }
+  ]
+}

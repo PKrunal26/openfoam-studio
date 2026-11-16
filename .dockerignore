@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+renderer/dist
+classroom/data
+classroom/dist
+classroom/web/dist
+classroom/.env
+demo/projects
+demo/server.compiled.js
+docs/audit
+*.dmg

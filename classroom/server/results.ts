@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { buildVtkSeries, type VtkSeries } from '../../core/postprocess/vtkSeries.js'
 import { projectFiles } from '../../core/project/files.js'
-import type { Convergence } from './logParse.js'
+import type { Convergence, MonitorData } from './logParse.js'
 import type { RunResult } from './pipeline.js'
 
 const HASH = /^[0-9a-f]{40}$/
@@ -80,6 +80,10 @@ export class ResultStore {
     try { return JSON.parse(fs.readFileSync(path.join(this.dir(hash), 'convergence.json'), 'utf8')) as Convergence } catch { return null }
   }
 
+  monitors(hash: string): MonitorData[] {
+    try { return JSON.parse(fs.readFileSync(path.join(this.dir(hash), 'monitors.json'), 'utf8')) as MonitorData[] } catch { return [] }
+  }
+
   inputs(hash: string): { relPath: string; content: string }[] {
     const dir = path.join(this.dir(hash), 'inputs')
     return projectFiles(dir).map(file => ({ relPath: file.relPath, content: fs.readFileSync(file.path, 'utf8') }))
@@ -89,16 +93,18 @@ export class ResultStore {
     const cached = this.manifests.get(hash)
     if (cached) return cached
     const dir = path.join(this.dir(hash), 'VTK')
-    const files = projectFiles(dir).map(file => ({ relPath: file.relPath, size: fs.statSync(file.path).size }))
+    // Files are stored gzipped; the manifest lists them under their plain names.
+    const files = projectFiles(dir).filter(file => file.relPath.endsWith('.gz'))
+      .map(file => ({ relPath: file.relPath.slice(0, -3), size: fs.statSync(file.path).size }))
     const manifest = { files, series: buildVtkSeries(files.map(file => file.relPath)) }
     this.manifests.set(hash, manifest)
     return manifest
   }
 
-  /** Absolute path of a VTK file, or null when it is not part of the result. */
+  /** Absolute path of a (gzipped) VTK file, or null when it is not part of the result. */
   vtkFile(hash: string, relPath: string): string | null {
     if (!this.manifest(hash).files.some(file => file.relPath === relPath)) return null
-    return path.join(this.dir(hash), 'VTK', ...relPath.split('/'))
+    return path.join(this.dir(hash), 'VTK', ...`${relPath}.gz`.split('/'))
   }
 
   list(): { hash: string; bytes: number; usedAt: number; result: RunResult }[] {

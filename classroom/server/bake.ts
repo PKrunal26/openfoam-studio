@@ -45,7 +45,7 @@ await Promise.all([...catalog.values()].filter(t => !only.length || only.include
   const result = await queue.wait(rendered.hash)
   const seconds = ((Date.now() - started) / 1000).toFixed(1)
   if (result?.status === 'succeeded') {
-    console.log(`✓ ${tutorial.def.id.padEnd(16)} solved in ${seconds} s — ${result.cells ?? '?'} cells, final time ${result.finalTime}, ${(result.vtkBytes / 1e6).toFixed(1)} MB of results`)
+    console.log(`✓ ${tutorial.def.id.padEnd(16)} solved in ${seconds} s: ${result.cells ?? '?'} cells, final time ${result.finalTime}, ${(result.vtkBytes / 1e6).toFixed(1)} MB of results`)
   } else {
     failures++
     console.error(`✗ ${tutorial.def.id.padEnd(16)} ${result ? `failed at ${result.failedStage}: ${result.reason}` : queue.outcome(rendered.hash)?.message ?? 'did not finish'}`)

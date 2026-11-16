@@ -1,0 +1,53 @@
+# OpenFOAM Studio Classroom: one-machine deployment.
+#
+#   cp classroom/.env.example classroom/.env     # then edit it
+#   docker compose -f classroom/docker-compose.yml --env-file classroom/.env up -d --build
+#
+# Caddy terminates HTTPS and fetches a certificate automatically when
+# OFS_DOMAIN is a real DNS name pointing at this machine. For a quick test
+# without a domain, leave OFS_DOMAIN as ":80" and open http://<server-ip>/.
+
+services:
+  classroom:
+    build:
+      context: ..
+      dockerfile: classroom/Dockerfile
+    restart: unless-stopped
+    environment:
+      OFS_CLASS_NAME: ${OFS_CLASS_NAME:-CFD with OpenFOAM}
+      OFS_CLASS_CODE: ${OFS_CLASS_CODE:?Set OFS_CLASS_CODE in classroom/.env}
+      OFS_INSTRUCTOR_CODE: ${OFS_INSTRUCTOR_CODE:?Set OFS_INSTRUCTOR_CODE in classroom/.env}
+      OFS_MAX_CONCURRENT_RUNS: ${OFS_MAX_CONCURRENT_RUNS:-2}
+      OFS_MAX_RUNS_PER_TUTORIAL: ${OFS_MAX_RUNS_PER_TUTORIAL:-8}
+      OFS_MAX_RUNS_PER_DAY: ${OFS_MAX_RUNS_PER_DAY:-40}
+      OFS_CACHE_MAX_GB: ${OFS_CACHE_MAX_GB:-20}
+      OFS_SECURE_COOKIES: ${OFS_SECURE_COOKIES:-0}
+      OFS_TRUST_PROXY: "1"
+      OFS_CLASSROOM_DATA: ${OFS_CLASSROOM_DATA:-/srv/ofs-classroom}
+    volumes:
+      # Solver containers are started on the HOST Docker daemon, which resolves
+      # bind-mount paths on the host. The data directory must therefore have the
+      # same absolute path inside this container as on the host.
+      - ${OFS_CLASSROOM_DATA:-/srv/ofs-classroom}:${OFS_CLASSROOM_DATA:-/srv/ofs-classroom}
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - classroom
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OFS_DOMAIN: ${OFS_DOMAIN:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

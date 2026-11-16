@@ -1,0 +1,586 @@
+{
+  "id": "cylinder",
+  "order": 5,
+  "title": "Flow around a cylinder",
+  "subtitle": "Laminar vortex shedding and the von Kármán vortex street",
+  "summary": "Uniform flow meets a circular cylinder. Above a Reynolds number of about 47 the wake becomes unstable and sheds vortices alternately from each side. You will measure drag, lift and the shedding frequency, and see how numerics can suppress real physics.",
+  "difficulty": "Advanced",
+  "analysisType": "Incompressible",
+  "solver": "incompressibleFluid",
+  "dimension": "2D",
+  "tags": [
+    "external flow",
+    "transient",
+    "vortex shedding",
+    "forces"
+  ],
+  "estimatedRuntime": "about 2 min",
+  "geometry": {
+    "name": "Cylinder in a channel",
+    "description": "Cylinder of diameter D = 1 m. Domain 20 D long and 10 D high; the cylinder sits 5 D from the inlet (2D).",
+    "patches": [
+      {
+        "name": "inlet",
+        "label": "Inlet",
+        "kind": "inlet"
+      },
+      {
+        "name": "outlet",
+        "label": "Outlet",
+        "kind": "outlet"
+      },
+      {
+        "name": "sides",
+        "label": "Top and bottom",
+        "kind": "open"
+      },
+      {
+        "name": "cylinder",
+        "label": "Cylinder surface",
+        "kind": "wall"
+      },
+      {
+        "name": "frontAndBack",
+        "label": "Front and back",
+        "kind": "empty"
+      }
+    ]
+  },
+  "params": [
+    {
+      "id": "Uinf",
+      "label": "Free-stream velocity",
+      "symbol": "U",
+      "unit": "m/s",
+      "type": "number",
+      "default": 1,
+      "min": 0.2,
+      "max": 5
+    },
+    {
+      "id": "nu",
+      "label": "Kinematic viscosity",
+      "symbol": "ν",
+      "unit": "m²/s",
+      "type": "number",
+      "default": 0.01,
+      "min": 0.002,
+      "max": 1,
+      "help": "With D = 1 m and U = 1 m/s, Re = 1/ν. The reference is Re = 100."
+    },
+    {
+      "id": "endTime",
+      "label": "End time",
+      "unit": "s",
+      "type": "number",
+      "default": 150,
+      "min": 10,
+      "max": 300,
+      "help": "Shedding needs roughly 60 D/U to develop from rest."
+    },
+    {
+      "id": "maxCo",
+      "label": "Maximum Courant number",
+      "type": "select",
+      "default": 1,
+      "options": [
+        {
+          "value": 0.5,
+          "label": "0.5 (more accurate)"
+        },
+        {
+          "value": 1,
+          "label": "1 (reference)"
+        },
+        {
+          "value": 2,
+          "label": "2 (faster, less accurate)"
+        }
+      ]
+    },
+    {
+      "id": "ddt",
+      "label": "Time scheme",
+      "type": "select",
+      "default": "Euler",
+      "options": [
+        {
+          "value": "Euler",
+          "label": "Euler (1st order)"
+        },
+        {
+          "value": "backward",
+          "label": "backward (2nd order)"
+        }
+      ]
+    },
+    {
+      "id": "convection",
+      "label": "Convection scheme",
+      "type": "select",
+      "default": "linearUpwind grad(U)",
+      "options": [
+        {
+          "value": "linearUpwind grad(U)",
+          "label": "linearUpwind (2nd order)"
+        },
+        {
+          "value": "linear",
+          "label": "linear (2nd order, central)"
+        },
+        {
+          "value": "upwind",
+          "label": "upwind (1st order, diffusive)"
+        }
+      ],
+      "help": "Numerical diffusion acts like extra viscosity. Watch what first-order upwind does to the vortex street."
+    },
+    {
+      "id": "refine",
+      "label": "Mesh resolution",
+      "type": "select",
+      "default": 1,
+      "options": [
+        {
+          "value": 0.75,
+          "label": "Coarse (60 cells around the cylinder)"
+        },
+        {
+          "value": 1,
+          "label": "Reference (80 cells around the cylinder)"
+        },
+        {
+          "value": 1.5,
+          "label": "Fine (120 cells around the cylinder)"
+        }
+      ]
+    }
+  ],
+  "derived": [
+    {
+      "id": "Re",
+      "label": "Reynolds number",
+      "symbol": "Re",
+      "expr": "Uinf * 1 / nu",
+      "digits": 4,
+      "help": "Re = U D / ν with D = 1 m."
+    },
+    {
+      "id": "St",
+      "label": "Expected Strouhal number",
+      "symbol": "St",
+      "expr": "if(Re > 47, 0.212 * (1 - 21.2 / Re), 0)",
+      "digits": 3,
+      "help": "Roshko's correlation St = 0.212 (1 − 21.2/Re); 0 means no shedding is expected."
+    },
+    {
+      "id": "period",
+      "label": "Expected shedding period",
+      "unit": "s",
+      "expr": "if(St > 0, 1 / (St * Uinf), 0)",
+      "digits": 3,
+      "help": "T = D / (St U)"
+    },
+    {
+      "id": "kick",
+      "label": "Initial cross-flow",
+      "unit": "m/s",
+      "expr": "0.05 * Uinf"
+    },
+    {
+      "id": "writeEvery",
+      "label": "Write interval",
+      "unit": "s",
+      "expr": "if(St > 0, period / 12, 0.5 / Uinf)",
+      "digits": 3,
+      "help": "About 12 snapshots per shedding period; the last 60 are kept."
+    },
+    {
+      "id": "nT",
+      "label": "Cells per quarter circle",
+      "expr": "round(20 * refine)"
+    },
+    {
+      "id": "nR",
+      "label": "Radial cells",
+      "expr": "round(24 * refine)"
+    },
+    {
+      "id": "nxUp",
+      "label": "Cells upstream",
+      "expr": "round(12 * refine)"
+    },
+    {
+      "id": "nySide",
+      "label": "Cells above and below",
+      "expr": "round(12 * refine)"
+    },
+    {
+      "id": "nxWake",
+      "label": "Cells in the wake",
+      "expr": "round(48 * refine)"
+    },
+    {
+      "id": "wakeGrading",
+      "label": "Wake grading",
+      "expr": "2.5"
+    },
+    {
+      "id": "radialGrading",
+      "label": "Radial grading",
+      "expr": "0.2"
+    },
+    {
+      "id": "cells",
+      "label": "Total cells",
+      "expr": "4 * nT * nR + (nxUp + nT + nxWake) * (2 * nySide + nT) - nT * nT",
+      "digits": 6
+    }
+  ],
+  "constraints": [
+    {
+      "expr": "cells * endTime * Uinf / maxCo <= 2500000",
+      "message": "This is too expensive for the classroom server. Shorten the end time, coarsen the mesh or allow a larger Courant number."
+    },
+    {
+      "expr": "Re <= 1000",
+      "message": "Above Re = 1000 the wake is three-dimensional and turbulent; this 2D laminar setup no longer applies. Increase the viscosity or lower the velocity."
+    },
+    {
+      "expr": "Re <= 300",
+      "level": "warning",
+      "message": "Above Re ≈ 200 the real wake becomes three-dimensional. A 2D laminar result is only qualitative here."
+    }
+  ],
+  "sections": [
+    {
+      "node": "materials",
+      "items": [
+        {
+          "id": "fluid",
+          "label": "Fluid",
+          "icon": "fluid",
+          "description": "Only the Reynolds number matters for this flow, so the case uses convenient unit values.",
+          "files": [
+            "constant/physicalProperties"
+          ],
+          "rows": [
+            {
+              "label": "Viscosity model",
+              "value": "Newtonian (constant)"
+            }
+          ],
+          "params": [
+            "nu"
+          ],
+          "derived": [
+            "Re",
+            "St",
+            "period"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "model",
+      "items": [
+        {
+          "id": "turbulence",
+          "label": "Turbulence",
+          "icon": "model",
+          "description": "The flow is laminar at these Reynolds numbers: the unsteadiness you see is a resolved instability, not turbulence.",
+          "files": [
+            "constant/momentumTransport"
+          ],
+          "rows": [
+            {
+              "label": "Simulation type",
+              "value": "laminar"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "initialConditions",
+      "items": [
+        {
+          "id": "initial",
+          "label": "Initial conditions",
+          "icon": "initial",
+          "description": "The domain starts at the free-stream velocity with a 5 % cross-flow. That small asymmetry triggers shedding quickly; a perfectly symmetric start can stay symmetric for a very long time.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "(p) Kinematic pressure",
+              "value": "0 m²/s²"
+            }
+          ],
+          "derived": [
+            "kick"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "boundaryConditions",
+      "items": [
+        {
+          "id": "bcInlet",
+          "label": "Velocity inlet",
+          "icon": "inlet",
+          "patches": [
+            "inlet"
+          ],
+          "description": "Uniform free stream in +x.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "fixedValue"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ],
+          "params": [
+            "Uinf"
+          ]
+        },
+        {
+          "id": "bcOutlet",
+          "label": "Pressure outlet",
+          "icon": "outlet",
+          "patches": [
+            "outlet"
+          ],
+          "description": "Vortices must leave cleanly. inletOutlet lets fluid out freely but sets zero velocity for any backflow.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Pressure type",
+              "value": "fixedValue 0"
+            },
+            {
+              "label": "Velocity type",
+              "value": "inletOutlet"
+            }
+          ]
+        },
+        {
+          "id": "bcSides",
+          "label": "Top and bottom",
+          "icon": "open",
+          "patches": [
+            "sides"
+          ],
+          "description": "Frictionless boundaries standing in for the far field.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "slip"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ]
+        },
+        {
+          "id": "bcCylinder",
+          "label": "Cylinder",
+          "icon": "wall",
+          "patches": [
+            "cylinder"
+          ],
+          "description": "No-slip wall. Drag and lift are integrated over this patch.",
+          "files": [
+            "0/U",
+            "0/p",
+            "system/controlDict"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ]
+        },
+        {
+          "id": "bcEmpty",
+          "label": "Front and back",
+          "icon": "empty",
+          "patches": [
+            "frontAndBack"
+          ],
+          "description": "Empty patches make the case two-dimensional.",
+          "rows": [
+            {
+              "label": "Type",
+              "value": "empty"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "numerics",
+      "items": [
+        {
+          "id": "numerics",
+          "label": "Numerics",
+          "icon": "numerics",
+          "description": "Time and convection discretisation decide how much numerical diffusion the wake sees.",
+          "files": [
+            "system/fvSchemes",
+            "system/fvSolution"
+          ],
+          "rows": [
+            {
+              "label": "Algorithm",
+              "value": "PIMPLE, 2 pressure correctors"
+            }
+          ],
+          "params": [
+            "ddt",
+            "convection"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "simulationControl",
+      "items": [
+        {
+          "id": "control",
+          "label": "Simulation control",
+          "icon": "control",
+          "description": "Adaptive time step; force coefficients are recorded every step.",
+          "files": [
+            "system/controlDict"
+          ],
+          "rows": [
+            {
+              "label": "Time step",
+              "value": "adaptive"
+            },
+            {
+              "label": "Snapshots kept",
+              "value": "last 60"
+            }
+          ],
+          "params": [
+            "endTime",
+            "maxCo"
+          ],
+          "derived": [
+            "writeEvery"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "mesh",
+      "items": [
+        {
+          "id": "mesh",
+          "label": "Mesh",
+          "icon": "mesh",
+          "description": "Twelve blocks: an O-grid wrapped around the cylinder with cells clustered at the wall, and a stretched wake region.",
+          "files": [
+            "system/blockMeshDict"
+          ],
+          "rows": [
+            {
+              "label": "Mesher",
+              "value": "blockMesh (hexahedral, O-grid)"
+            }
+          ],
+          "params": [
+            "refine"
+          ],
+          "derived": [
+            "cells"
+          ]
+        }
+      ]
+    }
+  ],
+  "run": {
+    "maxWallSeconds": 1200,
+    "fields": [
+      "U",
+      "p"
+    ],
+    "steady": false,
+    "skipInitial": true,
+    "endTime": "endTime"
+  },
+  "monitors": [
+    {
+      "title": "Force coefficients",
+      "yLabel": "Coefficient",
+      "series": [
+        {
+          "file": "forceCoeffs",
+          "column": "Cd",
+          "label": "Drag Cd"
+        },
+        {
+          "file": "forceCoeffs",
+          "column": "Cl",
+          "label": "Lift Cl"
+        }
+      ]
+    }
+  ],
+  "results": {
+    "defaultField": "U",
+    "fields": {
+      "U": {
+        "label": "Velocity",
+        "unit": "m/s"
+      },
+      "p": {
+        "label": "Kinematic pressure",
+        "unit": "m²/s²"
+      }
+    },
+    "view": "+Z"
+  },
+  "verify": [
+    {
+      "values": {
+        "nu": 0.03
+      }
+    },
+    {
+      "values": {
+        "nu": 0.0167
+      }
+    },
+    {
+      "values": {
+        "nu": 0.005
+      }
+    }
+  ]
+}

@@ -33,7 +33,8 @@
     "classroom:serve": "tsx classroom/server/server.ts",
     "classroom:bake": "tsx classroom/server/bake.ts",
     "test:classroom": "vitest run tests/unit/classroom",
-    "typecheck:classroom": "tsc -p tsconfig.classroom.json --noEmit && tsc -p tsconfig.classroom-web.json --noEmit"
+    "typecheck:classroom": "tsc -p tsconfig.classroom.json --noEmit && tsc -p tsconfig.classroom-web.json --noEmit",
+    "classroom:verify": "tsx classroom/server/verify.ts"
   },
   "keywords": [
     "openfoam",
@@ -121,7 +122,6 @@
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@anthropic-ai/sdk": "^0.86.1",
-    "@fontsource/lato": "^5.3.0",
     "@kitware/vtk.js": "^35.11.0",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-slot": "^1.2.4",
@@ -140,6 +140,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@fontsource/lato": "^5.3.0",
     "@tailwindcss/vite": "^4.2.4",
     "@types/dockerode": "^4.0.1",
     "@types/flexsearch": "^0.7.6",

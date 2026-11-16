@@ -33,3 +33,4 @@ RELEASE_CHECKLIST.md
 classroom/data/
 classroom/web/dist/
 classroom/dist/
+classroom/.env

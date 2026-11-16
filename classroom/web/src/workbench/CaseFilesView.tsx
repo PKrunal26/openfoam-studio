@@ -5,9 +5,9 @@ import { useToasts, useWorkbench } from '@c/store'
 import { Button, Notice, Spinner, cn } from '@c/ui/primitives'
 
 const GROUPS: { dir: string; label: string }[] = [
-  { dir: '0', label: '0 — initial and boundary conditions' },
-  { dir: 'constant', label: 'constant — physical properties' },
-  { dir: 'system', label: 'system — mesh, time and numerics' },
+  { dir: '0', label: '0: initial and boundary conditions' },
+  { dir: 'constant', label: 'constant: physical properties' },
+  { dir: 'system', label: 'system: mesh, time and numerics' },
 ]
 
 /** Light OpenFOAM dictionary highlighting: comments, keywords, numbers. */

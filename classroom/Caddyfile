@@ -1,0 +1,6 @@
+# Reverse proxy for the classroom server. With a real domain in OFS_DOMAIN,
+# Caddy obtains and renews a Let's Encrypt certificate on its own.
+{$OFS_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy classroom:8080
+}

@@ -8,6 +8,15 @@
 
 ---
 
+## Classroom web app — 2026-11-16
+
+- `done` · Hosted multi-student site in `classroom/` (server, SimScale-style web workbench, six pre-solved tutorials with guides). See [CLASSROOM.md](CLASSROOM.md).
+- `done` · All six reference cases solve in OpenFOAM 13; every form option and guide exercise verified with `npm run classroom:verify`; 35 unit tests; headless-browser pass of the full student flow.
+- `done` · Stage 0 re-run after the optional container-user change in `core/docker/CommandRunner.ts`: 15/15 passed. Full unit suite 316/316, all typechecks and the desktop renderer build pass. Stages 1 to 5 not re-run (need an LLM provider; desktop pipeline otherwise unchanged).
+- `pending` · Deploy to the course server (AWS EC2 or similar) with a real class code, instructor code and domain; follow docs/CLASSROOM.md.
+- `pending` · Confirm the tutorial list with the instructor; add or adapt cases under `classroom/tutorials/` as needed.
+- `pending` · Optional: AI helper panel behind an instructor-provided key; snappyHexMesh/CAD geometries; binary VTK for larger meshes.
+
 ## Pull request and merge — 2026-10-08
 
 - `done` · Prepared the completed launch fixes and CLI/setup follow-up for the user-authorized pull request and merge. Automatic PR checks verify units/types/builds/assets; full ordered simulation validation remains mandatory for release candidates. GitHub records the final PR checks, commit and merge status.

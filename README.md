@@ -22,6 +22,15 @@ Installers currently have no verified signing/notarization evidence. Broad promo
 4. Save the reviewed files, then run. Mesh checks and solver completion are distinct from benchmark agreement or engineering accuracy.
 5. Explore the results and keep the input/run identity with exports. Use Export in the project toolbar and Import project on the home screen to transfer a case, logs, and saved results. Back up projects before upgrading; see [support and backup guidance](docs/SUPPORT.md).
 
+## Classroom edition (hosted, for teaching)
+
+`classroom/` is a separate web app for courses: students sign in, open pre-solved
+OpenFOAM tutorials in a browser workbench, change settings and re-run them on a
+shared server. Each case is solved once and identical settings are reused across
+the class, so it runs on one small machine with no LLM cost. See
+[docs/CLASSROOM.md](docs/CLASSROOM.md) for a local quick start and server
+deployment.
+
 ## Development
 
 ```sh

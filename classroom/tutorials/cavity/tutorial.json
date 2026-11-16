@@ -8,140 +8,474 @@
   "analysisType": "Incompressible",
   "solver": "incompressibleFluid",
   "dimension": "2D",
-  "tags": ["laminar", "transient", "PISO"],
+  "tags": [
+    "laminar",
+    "transient",
+    "PISO"
+  ],
   "estimatedRuntime": "about 10 s",
   "geometry": {
     "name": "Square cavity",
     "description": "0.1 m × 0.1 m square, one cell thick (2D).",
     "patches": [
-      { "name": "movingWall", "label": "Moving lid", "kind": "movingWall" },
-      { "name": "fixedWalls", "label": "Fixed walls", "kind": "wall" },
-      { "name": "frontAndBack", "label": "Front and back", "kind": "empty" }
+      {
+        "name": "movingWall",
+        "label": "Moving lid",
+        "kind": "movingWall"
+      },
+      {
+        "name": "fixedWalls",
+        "label": "Fixed walls",
+        "kind": "wall"
+      },
+      {
+        "name": "frontAndBack",
+        "label": "Front and back",
+        "kind": "empty"
+      }
     ]
   },
   "params": [
-    { "id": "Ulid", "label": "Lid velocity", "symbol": "U", "unit": "m/s", "type": "number", "default": 1, "min": 0.01, "max": 10,
-      "help": "Speed of the top wall in the +x direction." },
-    { "id": "nu", "label": "Kinematic viscosity", "symbol": "ν", "unit": "m²/s", "type": "number", "default": 0.01, "min": 0.00001, "max": 1,
-      "help": "Lower viscosity means a higher Reynolds number." },
-    { "id": "N", "label": "Cells per side", "type": "select", "default": 20,
+    {
+      "id": "Ulid",
+      "label": "Lid velocity",
+      "symbol": "U",
+      "unit": "m/s",
+      "type": "number",
+      "default": 1,
+      "min": 0.01,
+      "max": 10,
+      "help": "Speed of the top wall in the +x direction."
+    },
+    {
+      "id": "nu",
+      "label": "Kinematic viscosity",
+      "symbol": "ν",
+      "unit": "m²/s",
+      "type": "number",
+      "default": 0.01,
+      "min": 1e-05,
+      "max": 1,
+      "help": "Lower viscosity means a higher Reynolds number."
+    },
+    {
+      "id": "N",
+      "label": "Cells per side",
+      "type": "select",
+      "default": 20,
       "options": [
-        { "value": 10, "label": "10 × 10 (coarse)" },
-        { "value": 20, "label": "20 × 20 (reference)" },
-        { "value": 40, "label": "40 × 40 (fine)" },
-        { "value": 80, "label": "80 × 80 (very fine)" }
+        {
+          "value": 10,
+          "label": "10 × 10 (coarse)"
+        },
+        {
+          "value": 20,
+          "label": "20 × 20 (reference)"
+        },
+        {
+          "value": 40,
+          "label": "40 × 40 (fine)"
+        },
+        {
+          "value": 80,
+          "label": "80 × 80 (very fine)"
+        }
       ],
-      "help": "A finer mesh resolves more detail but needs a smaller time step." },
-    { "id": "endTime", "label": "End time", "unit": "s", "type": "number", "default": 0.5, "min": 0.05, "max": 20 },
-    { "id": "deltaT", "label": "Time step", "symbol": "Δt", "unit": "s", "type": "number", "default": 0.005, "min": 0.00005, "max": 0.1,
-      "help": "Keep the Courant number below 1 for a stable solution." },
-    { "id": "convection", "label": "Convection scheme", "type": "select", "default": "linear",
+      "help": "A finer mesh resolves more detail but needs a smaller time step."
+    },
+    {
+      "id": "endTime",
+      "label": "End time",
+      "unit": "s",
+      "type": "number",
+      "default": 0.5,
+      "min": 0.05,
+      "max": 20
+    },
+    {
+      "id": "deltaT",
+      "label": "Time step",
+      "symbol": "Δt",
+      "unit": "s",
+      "type": "number",
+      "default": 0.005,
+      "min": 5e-05,
+      "max": 0.1,
+      "help": "Keep the Courant number below 1 for a stable solution."
+    },
+    {
+      "id": "convection",
+      "label": "Convection scheme",
+      "type": "select",
+      "default": "linear",
       "options": [
-        { "value": "linear", "label": "linear (2nd order, central)" },
-        { "value": "linearUpwind grad(U)", "label": "linearUpwind (2nd order, upwind-biased)" },
-        { "value": "limitedLinearV 1", "label": "limitedLinearV (bounded 2nd order)" },
-        { "value": "upwind", "label": "upwind (1st order, diffusive)" }
+        {
+          "value": "linear",
+          "label": "linear (2nd order, central)"
+        },
+        {
+          "value": "linearUpwind grad(U)",
+          "label": "linearUpwind (2nd order, upwind-biased)"
+        },
+        {
+          "value": "limitedLinearV 1",
+          "label": "limitedLinearV (bounded 2nd order)"
+        },
+        {
+          "value": "upwind",
+          "label": "upwind (1st order, diffusive)"
+        }
       ],
-      "help": "How the momentum flux div(phi,U) is interpolated to cell faces." },
-    { "id": "nCorrectors", "label": "Pressure correctors", "type": "select", "default": 2,
-      "options": [
-        { "value": 1, "label": "1" },
-        { "value": 2, "label": "2 (reference)" },
-        { "value": 3, "label": "3" }
-      ],
-      "help": "PISO pressure-velocity corrections per time step." }
+      "help": "How the momentum flux div(phi,U) is interpolated to cell faces."
+    }
   ],
   "derived": [
-    { "id": "Re", "label": "Reynolds number", "symbol": "Re", "expr": "Ulid * 0.1 / nu", "digits": 4,
-      "help": "Re = U L / ν with L = 0.1 m." },
-    { "id": "dx", "label": "Cell size", "symbol": "Δx", "unit": "m", "expr": "0.1 / N", "digits": 3 },
-    { "id": "Co", "label": "Courant number", "symbol": "Co", "expr": "Ulid * deltaT / (0.1 / N)", "digits": 3,
-      "help": "Co = U Δt / Δx. Above 1 the fluid crosses more than one cell per step." },
-    { "id": "steps", "label": "Time steps", "expr": "endTime / deltaT", "digits": 6 },
-    { "id": "writeEvery", "label": "Write interval", "unit": "s", "expr": "endTime / 10", "digits": 4,
-      "help": "Ten result snapshots are saved per run." }
+    {
+      "id": "Re",
+      "label": "Reynolds number",
+      "symbol": "Re",
+      "expr": "Ulid * 0.1 / nu",
+      "digits": 4,
+      "help": "Re = U L / ν with L = 0.1 m."
+    },
+    {
+      "id": "dx",
+      "label": "Cell size",
+      "symbol": "Δx",
+      "unit": "m",
+      "expr": "0.1 / N",
+      "digits": 3
+    },
+    {
+      "id": "Co",
+      "label": "Courant number",
+      "symbol": "Co",
+      "expr": "Ulid * deltaT / (0.1 / N)",
+      "digits": 3,
+      "help": "Co = U Δt / Δx. Above 1 the fluid crosses more than one cell per step."
+    },
+    {
+      "id": "steps",
+      "label": "Time steps",
+      "expr": "endTime / deltaT",
+      "digits": 6
+    },
+    {
+      "id": "writeEvery",
+      "label": "Write interval",
+      "unit": "s",
+      "expr": "endTime / 10",
+      "digits": 4,
+      "help": "Ten result snapshots are saved per run."
+    }
   ],
   "constraints": [
-    { "expr": "steps <= 40000", "message": "That is more than 40 000 time steps. Increase the time step or shorten the end time." },
-    { "expr": "steps * N * N <= 40000000", "message": "This combination of mesh and time steps is too expensive for the classroom server. Coarsen the mesh or take fewer steps." },
-    { "expr": "Co <= 1", "level": "warning", "message": "Courant number is above 1. The solution will probably oscillate or diverge — reduce the time step." }
+    {
+      "expr": "steps <= 40000",
+      "message": "That is more than 40 000 time steps. Increase the time step or shorten the end time."
+    },
+    {
+      "expr": "steps * N * N <= 40000000",
+      "message": "This combination of mesh and time steps is too expensive for the classroom server. Coarsen the mesh or take fewer steps."
+    },
+    {
+      "expr": "Co <= 1",
+      "level": "warning",
+      "message": "Courant number is above 1. The solution may oscillate or diverge. Reduce the time step."
+    }
   ],
   "sections": [
-    { "node": "materials", "items": [
-      { "id": "fluid", "label": "Fluid", "icon": "fluid",
-        "description": "A Newtonian fluid with constant kinematic viscosity. incompressibleFluid solves for kinematic pressure p/ρ, so density does not appear.",
-        "files": ["constant/physicalProperties"],
-        "rows": [{ "label": "Viscosity model", "value": "Newtonian (constant)" }],
-        "params": ["nu"], "derived": ["Re"] }
-    ] },
-    { "node": "model", "items": [
-      { "id": "turbulence", "label": "Turbulence", "icon": "model",
-        "description": "At these Reynolds numbers the flow is laminar, so no turbulence model is used.",
-        "files": ["constant/momentumTransport"],
-        "rows": [{ "label": "Simulation type", "value": "laminar" }] }
-    ] },
-    { "node": "initialConditions", "items": [
-      { "id": "initial", "label": "Initial conditions", "icon": "initial",
-        "description": "The fluid starts at rest; the lid impulsively starts moving at t = 0.",
-        "files": ["0/U", "0/p"],
-        "rows": [
-          { "label": "(U) Velocity", "value": "(0 0 0) m/s" },
-          { "label": "(p) Kinematic pressure", "value": "0 m²/s²" }
-        ] }
-    ] },
-    { "node": "boundaryConditions", "items": [
-      { "id": "bcLid", "label": "Moving lid", "icon": "movingWall", "patches": ["movingWall"],
-        "description": "The top wall slides in +x and drags the fluid with it.",
-        "files": ["0/U", "0/p"],
-        "rows": [
-          { "label": "Velocity type", "value": "fixedValue" },
-          { "label": "Pressure type", "value": "zeroGradient" }
-        ],
-        "params": ["Ulid"] },
-      { "id": "bcWalls", "label": "Fixed walls", "icon": "wall", "patches": ["fixedWalls"],
-        "description": "Left, right and bottom walls. The fluid sticks to them.",
-        "files": ["0/U", "0/p"],
-        "rows": [
-          { "label": "Velocity type", "value": "noSlip" },
-          { "label": "Pressure type", "value": "zeroGradient" }
-        ] },
-      { "id": "bcEmpty", "label": "Front and back", "icon": "empty", "patches": ["frontAndBack"],
-        "description": "OpenFOAM meshes are always 3D. The empty condition tells the solver not to solve in the z direction, making the case 2D.",
-        "files": ["0/U", "0/p"],
-        "rows": [{ "label": "Type", "value": "empty" }] }
-    ] },
-    { "node": "numerics", "items": [
-      { "id": "numerics", "label": "Numerics", "icon": "numerics",
-        "description": "Discretisation schemes (fvSchemes) and the pressure-velocity coupling (fvSolution).",
-        "files": ["system/fvSchemes", "system/fvSolution"],
-        "rows": [
-          { "label": "Time scheme", "value": "Euler (1st order implicit)" },
-          { "label": "Gradient scheme", "value": "Gauss linear" },
-          { "label": "Pressure solver", "value": "PCG with DIC" }
-        ],
-        "params": ["convection", "nCorrectors"] }
-    ] },
-    { "node": "simulationControl", "items": [
-      { "id": "control", "label": "Simulation control", "icon": "control",
-        "description": "Time stepping and output, written to system/controlDict.",
-        "files": ["system/controlDict"],
-        "params": ["endTime", "deltaT"], "derived": ["Co", "steps", "writeEvery"] }
-    ] },
-    { "node": "mesh", "items": [
-      { "id": "mesh", "label": "Mesh", "icon": "mesh",
-        "description": "A uniform block-structured mesh from blockMesh.",
-        "files": ["system/blockMeshDict"],
-        "rows": [{ "label": "Mesher", "value": "blockMesh (hexahedral)" }],
-        "params": ["N"], "derived": ["dx"] }
-    ] }
+    {
+      "node": "materials",
+      "items": [
+        {
+          "id": "fluid",
+          "label": "Fluid",
+          "icon": "fluid",
+          "description": "A Newtonian fluid with constant kinematic viscosity. incompressibleFluid solves for kinematic pressure p/ρ, so density does not appear.",
+          "files": [
+            "constant/physicalProperties"
+          ],
+          "rows": [
+            {
+              "label": "Viscosity model",
+              "value": "Newtonian (constant)"
+            }
+          ],
+          "params": [
+            "nu"
+          ],
+          "derived": [
+            "Re"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "model",
+      "items": [
+        {
+          "id": "turbulence",
+          "label": "Turbulence",
+          "icon": "model",
+          "description": "At these Reynolds numbers the flow is laminar, so no turbulence model is used.",
+          "files": [
+            "constant/momentumTransport"
+          ],
+          "rows": [
+            {
+              "label": "Simulation type",
+              "value": "laminar"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "initialConditions",
+      "items": [
+        {
+          "id": "initial",
+          "label": "Initial conditions",
+          "icon": "initial",
+          "description": "The fluid starts at rest; the lid impulsively starts moving at t = 0.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "(U) Velocity",
+              "value": "(0 0 0) m/s"
+            },
+            {
+              "label": "(p) Kinematic pressure",
+              "value": "0 m²/s²"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "boundaryConditions",
+      "items": [
+        {
+          "id": "bcLid",
+          "label": "Moving lid",
+          "icon": "movingWall",
+          "patches": [
+            "movingWall"
+          ],
+          "description": "The top wall slides in +x and drags the fluid with it.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "fixedValue"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ],
+          "params": [
+            "Ulid"
+          ]
+        },
+        {
+          "id": "bcWalls",
+          "label": "Fixed walls",
+          "icon": "wall",
+          "patches": [
+            "fixedWalls"
+          ],
+          "description": "Left, right and bottom walls. The fluid sticks to them.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Velocity type",
+              "value": "noSlip"
+            },
+            {
+              "label": "Pressure type",
+              "value": "zeroGradient"
+            }
+          ]
+        },
+        {
+          "id": "bcEmpty",
+          "label": "Front and back",
+          "icon": "empty",
+          "patches": [
+            "frontAndBack"
+          ],
+          "description": "OpenFOAM meshes are always 3D. The empty condition tells the solver not to solve in the z direction, making the case 2D.",
+          "files": [
+            "0/U",
+            "0/p"
+          ],
+          "rows": [
+            {
+              "label": "Type",
+              "value": "empty"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "node": "numerics",
+      "items": [
+        {
+          "id": "numerics",
+          "label": "Numerics",
+          "icon": "numerics",
+          "description": "Discretisation schemes (fvSchemes) and the pressure-velocity coupling (fvSolution).",
+          "files": [
+            "system/fvSchemes",
+            "system/fvSolution"
+          ],
+          "rows": [
+            {
+              "label": "Time scheme",
+              "value": "Euler (1st order implicit)"
+            },
+            {
+              "label": "Gradient scheme",
+              "value": "Gauss linear"
+            },
+            {
+              "label": "Pressure solver",
+              "value": "PCG with DIC"
+            },
+            {
+              "label": "Pressure correctors (PISO)",
+              "value": "2"
+            }
+          ],
+          "params": [
+            "convection"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "simulationControl",
+      "items": [
+        {
+          "id": "control",
+          "label": "Simulation control",
+          "icon": "control",
+          "description": "Time stepping and output, written to system/controlDict.",
+          "files": [
+            "system/controlDict"
+          ],
+          "params": [
+            "endTime",
+            "deltaT"
+          ],
+          "derived": [
+            "Co",
+            "steps",
+            "writeEvery"
+          ]
+        }
+      ]
+    },
+    {
+      "node": "mesh",
+      "items": [
+        {
+          "id": "mesh",
+          "label": "Mesh",
+          "icon": "mesh",
+          "description": "A uniform block-structured mesh from blockMesh.",
+          "files": [
+            "system/blockMeshDict"
+          ],
+          "rows": [
+            {
+              "label": "Mesher",
+              "value": "blockMesh (hexahedral)"
+            }
+          ],
+          "params": [
+            "N"
+          ],
+          "derived": [
+            "dx"
+          ]
+        }
+      ]
+    }
   ],
-  "run": { "maxWallSeconds": 300, "fields": ["U", "p"], "steady": false, "endTime": "endTime" },
+  "run": {
+    "maxWallSeconds": 300,
+    "fields": [
+      "U",
+      "p"
+    ],
+    "steady": false,
+    "endTime": "endTime"
+  },
   "results": {
     "defaultField": "U",
     "fields": {
-      "U": { "label": "Velocity", "unit": "m/s" },
-      "p": { "label": "Kinematic pressure", "unit": "m²/s²" }
+      "U": {
+        "label": "Velocity",
+        "unit": "m/s"
+      },
+      "p": {
+        "label": "Kinematic pressure",
+        "unit": "m²/s²"
+      }
     },
     "view": "+Z"
-  }
+  },
+  "verify": [
+    {
+      "values": {
+        "nu": 0.001
+      }
+    },
+    {
+      "values": {
+        "N": 40,
+        "deltaT": 0.0025
+      }
+    },
+    {
+      "values": {
+        "N": 80,
+        "deltaT": 0.00125
+      }
+    },
+    {
+      "values": {
+        "nu": 0.0005,
+        "N": 40,
+        "deltaT": 0.0025
+      }
+    },
+    {
+      "values": {
+        "nu": 0.0005,
+        "N": 40,
+        "deltaT": 0.0025,
+        "convection": "upwind"
+      }
+    },
+    {
+      "values": {
+        "N": 80
+      },
+      "expect": "failed"
+    }
+  ]
 }

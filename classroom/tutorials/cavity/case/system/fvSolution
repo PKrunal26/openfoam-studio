@@ -41,7 +41,7 @@ solvers
 
 PIMPLE
 {
-    nCorrectors     {{nCorrectors}};
+    nCorrectors     2;
     nNonOrthogonalCorrectors 0;
     pRefCell        0;
     pRefValue       0;

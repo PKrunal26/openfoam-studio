@@ -1,5 +1,5 @@
 /**
- * OpenFOAM Studio Classroom — multi-user web server.
+ * OpenFOAM Studio Classroom: multi-user web server.
  *
  * Serves the SimScale-style workbench (classroom/web/dist) and a JSON API:
  * students sign in, open pre-solved tutorials, change parameters and queue
@@ -169,13 +169,16 @@ const MIME: Record<string, string> = {
 }
 const COMPRESSIBLE = /^(?:text\/|application\/json|image\/svg)/
 
+// Framing is refused by default (clickjacking). OFS_ALLOW_FRAMING=1 lifts that for
+// embedding the site in an LMS page or a development preview pane.
+const ALLOW_FRAMING = process.env['OFS_ALLOW_FRAMING'] === '1'
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'same-origin',
-  'X-Frame-Options': 'DENY',
+  ...(ALLOW_FRAMING ? {} : { 'X-Frame-Options': 'DENY' }),
   'Content-Security-Policy': [
     "default-src 'self'", "img-src 'self' data: blob:", "style-src 'self' 'unsafe-inline'", "font-src 'self' data:",
-    "worker-src 'self' blob:", "connect-src 'self'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'",
+    "worker-src 'self' blob:", "connect-src 'self'", ...(ALLOW_FRAMING ? [] : ["frame-ancestors 'none'"]), "base-uri 'self'", "form-action 'self'",
   ].join('; '),
 }
 
@@ -216,26 +219,17 @@ function sendFile(req: http.IncomingMessage, res: http.ServerResponse, file: str
   }
 }
 
-/** Serve a result VTK file through a lazily built .gz copy (they compress ~5×). */
-function sendVtk(req: http.IncomingMessage, res: http.ServerResponse, hash: string, relPath: string, file: string): void {
+/** Result VTK files are stored gzipped and are immutable for a given hash. */
+function sendVtk(req: http.IncomingMessage, res: http.ServerResponse, gzFile: string): void {
   const headers = { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'private, max-age=604800, immutable', Vary: 'Accept-Encoding' }
-  if (!acceptsGzip(req)) { sendFile(req, res, file, headers['Cache-Control'], headers['Content-Type']); return }
-  const gz = path.join(results.dir(hash), 'VTKgz', `${relPath.split('/').join(path.sep)}.gz`)
-  const stream = () => {
-    res.writeHead(200, { ...headers, 'Content-Encoding': 'gzip', 'Content-Length': fs.statSync(gz).size })
-    pipeline(fs.createReadStream(gz), res, () => undefined)
+  const onError = (error: Error | null) => { if (error && !res.headersSent) { res.writeHead(500); res.end() } }
+  if (acceptsGzip(req)) {
+    res.writeHead(200, { ...headers, 'Content-Encoding': 'gzip', 'Content-Length': fs.statSync(gzFile).size })
+    pipeline(fs.createReadStream(gzFile), res, onError)
+  } else {
+    res.writeHead(200, headers)
+    pipeline(fs.createReadStream(gzFile), zlib.createGunzip(), res, onError)
   }
-  if (fs.existsSync(gz)) { stream(); return }
-  fs.promises.readFile(file)
-    .then(raw => new Promise<Buffer>((resolve, reject) => zlib.gzip(raw, { level: 6 }, (error, out) => error ? reject(error) : resolve(out))))
-    .then(async compressed => {
-      await fs.promises.mkdir(path.dirname(gz), { recursive: true })
-      const temporary = `${gz}.${randomUUID()}.tmp`
-      await fs.promises.writeFile(temporary, compressed)
-      await fs.promises.rename(temporary, gz)
-      stream()
-    })
-    .catch(() => { if (!res.headersSent) sendFile(req, res, file, headers['Cache-Control'], headers['Content-Type']) })
 }
 
 function clientAddress(req: http.IncomingMessage): string {
@@ -478,7 +472,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     if (blocking) throw new HttpError(422, blocking.message)
     if (!rendered) throw new HttpError(422, renderError ?? 'The case could not be generated')
     if (rendered.hash === referenceCases.get(tutorial.def.id)!.hash) {
-      throw new HttpError(409, 'These are the reference settings — the Reference solution already shows their results. Change a setting first.')
+      throw new HttpError(409, 'These are the reference settings: the Reference solution already shows their results. Change a setting first.')
     }
     let run = workspace.runs.find(candidate => candidate.hash === rendered.hash)
     if (run) {
@@ -556,7 +550,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
     if (action === 'GET /convergence') {
       const stored = results.read(hash) ? results.convergence(hash) : null
-      if (stored) { sendJSON(req, res, 200, { ...stored, live: false }); return }
+      if (stored) { sendJSON(req, res, 200, { ...stored, live: false, monitors: results.monitors(hash) }); return }
       // Live plot while the solver runs: re-parse the lines seen so far.
       const lines: string[] = []
       for (let from = 0; ;) {
@@ -566,7 +560,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         from = chunk.next
       }
       const start = lines.findIndex(line => line.includes('──── Solver ────'))
-      sendJSON(req, res, 200, { ...parseConvergence(start >= 0 ? lines.slice(start).join('\n') : ''), live: true })
+      sendJSON(req, res, 200, { ...parseConvergence(start >= 0 ? lines.slice(start).join('\n') : ''), live: true, monitors: [] })
       return
     }
     if (action === 'GET /files') {
@@ -585,7 +579,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const relPath = url.searchParams.get('path') ?? ''
       const file = results.vtkFile(hash, relPath)
       if (!file) throw new HttpError(404, 'Result file not found')
-      sendVtk(req, res, hash, relPath, file)
+      sendVtk(req, res, file)
       return
     }
   }
@@ -705,7 +699,7 @@ async function prepareCompute(): Promise<void> {
       console.log(`[bake] solving reference for ${tutorial.def.id}`)
       queue.submit(tutorial, rendered, BAKE)
       void queue.wait(rendered.hash).then(result => {
-        console.log(`[bake] ${tutorial.def.id}: ${result ? `${result.status}${result.reason ? ` — ${result.reason}` : ''}` : 'did not finish'}`)
+        console.log(`[bake] ${tutorial.def.id}: ${result ? `${result.status}${result.reason ? `: ${result.reason}` : ''}` : 'did not finish'}`)
       })
     }
   }
@@ -731,10 +725,10 @@ process.on('SIGINT', () => void shutdown())
 process.on('SIGTERM', () => void shutdown())
 
 server.listen(config.port, config.host, () => {
-  console.log(`OpenFOAM Studio Classroom — ${config.className}`)
+  console.log(`OpenFOAM Studio Classroom: ${config.className}`)
   console.log(`  listening on http://${config.host}:${config.port}`)
   console.log(`  ${catalog.size} tutorials, ${store.listStudents().length} students, data in ${config.dataDir}`)
-  if (!config.classCode) console.warn('  WARNING: OFS_CLASS_CODE is not set — anyone who can reach this server can create an account.')
+  if (!config.classCode) console.warn('  WARNING: OFS_CLASS_CODE is not set: anyone who can reach this server can create an account.')
   if (!config.instructorCode) console.warn('  Instructor overview is disabled (set OFS_INSTRUCTOR_CODE to enable it).')
   void prepareCompute()
 })

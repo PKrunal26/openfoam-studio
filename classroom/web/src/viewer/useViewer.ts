@@ -60,7 +60,11 @@ const FRONT_VIEW: { dir: Vec3; up: Vec3 } = { dir: [0, 0, 1], up: [0, 1, 0] }
 
 // ── Data sources (shared across mounts so switching views does not refetch) ──
 
-interface Source { data: ResultsDataSource; times: number[] }
+/**
+ * `fields` loads only the volume mesh of each step (all the results view needs);
+ * `geometry` also loads the boundary patches, and is only ever asked for one step.
+ */
+interface Source { fields: ResultsDataSource; geometry: ResultsDataSource; times: number[] }
 const sources = new Map<string, Promise<Source>>()
 
 function getSource(tutorialId: string, runId: string, hash: string): Promise<Source> {
@@ -73,7 +77,8 @@ function getSource(tutorialId: string, runId: string, hash: string): Promise<Sou
       if (!response.ok) throw new Error(`Could not load result file (${response.status})`)
       return response.text()
     }
-    return { data: new ResultsDataSource(manifest.series, fetchFile), times: manifest.series.times }
+    const volumeOnly = { times: manifest.series.times, steps: manifest.series.steps.map((step) => ({ ...step, patches: {} })) }
+    return { fields: new ResultsDataSource(volumeOnly, fetchFile), geometry: new ResultsDataSource(manifest.series, fetchFile), times: manifest.series.times }
   })
   sources.set(key, promise)
   promise.catch(() => sources.delete(key))
@@ -145,6 +150,25 @@ function patchGeometries(step: LoadedStep, tutorial: TutorialDef): PatchGeometry
   return out
 }
 
+/** Area-weighted outward normal of a patch (boundary faces point out of the domain). */
+function patchNormal(patch: PatchGeometry): Vec3 {
+  const { points, polys } = patch
+  const normal: Vec3 = [0, 0, 0]
+  for (let i = 0; i < polys.length;) {
+    const n = polys[i]!
+    // Newell's method: robust for any planar polygon.
+    for (let j = 0; j < n; j++) {
+      const a = polys[i + 1 + j]! * 3
+      const b = polys[i + 1 + ((j + 1) % n)]! * 3
+      normal[0] += (points[a + 1]! - points[b + 1]!) * (points[a + 2]! + points[b + 2]!)
+      normal[1] += (points[a + 2]! - points[b + 2]!) * (points[a]! + points[b]!)
+      normal[2] += (points[a]! - points[b]!) * (points[a + 1]! + points[b + 1]!)
+    }
+    i += n + 1
+  }
+  return normal
+}
+
 const tetCache = new WeakMap<LoadedStep, Uint32Array>()
 function tetsOf(step: LoadedStep): Uint32Array | null {
   if (!step.internal?.cells) return null
@@ -179,6 +203,8 @@ export function useViewer(
   coverRef.current = leftCover
   /** Fit factor: leave a margin and account for the covered part of the viewport. */
   const fitZoom = () => 0.9 * (1 - 0.75 * Math.min(0.8, Math.max(0, coverRef.current)))
+  /** The fit factor currently baked into the camera, so a panel opening can rescale it. */
+  const appliedFitRef = useRef(1)
   const [info, setInfo] = useState<ViewerInfo>(EMPTY_INFO)
   const [engineReady, setEngineReady] = useState(0)
 
@@ -237,18 +263,19 @@ export function useViewer(
       if (cameraKeyRef.current === key) { engine.resetClippingRange(); engine.render(); return }
       cameraKeyRef.current = key
       engine.setView(view.dir, view.up)
-      engine.zoom(fitZoom())
+      appliedFitRef.current = fitZoom()
+      engine.zoom(appliedFitRef.current)
     }
 
     const apply = async () => {
       const { tutorial, display } = scene
       const source = await getSource(tutorial.id, scene.runId, scene.hash)
       if (stale()) return
-      const numSteps = source.data.numSteps
+      const numSteps = source.fields.numSteps
       if (!numSteps) throw new Error('This run has no exported time steps.')
 
       if (scene.mode === 'geometry') {
-        const step = await source.data.loadStep(0)
+        const step = await source.geometry.loadStep(0)
         if (stale()) return
         const patches = patchGeometries(step, tutorial)
         const ids = new Set(patches.map((patch) => `patch:${patch.name}`))
@@ -265,7 +292,22 @@ export function useViewer(
           })
         }
         const bounds = step.internal ? boundsOf(step.internal.points) : null
-        camera(`${tutorial.id}:geometry`, ISO_VIEW)
+        // Turn the model so the faces of the selected setting are not on the far side.
+        const facing: Vec3 = [0, 0, 0]
+        for (const patch of patches) {
+          if (!scene.highlight.includes(patch.name)) continue
+          const normal = patchNormal(patch)
+          for (let a = 0; a < 3; a++) facing[a]! += normal[a]!
+        }
+        const magnitude = Math.hypot(facing[0], facing[1], facing[2])
+        const flipX = magnitude > 0 && facing[0] / magnitude < -0.5
+        const flipY = magnitude > 0 && facing[1] / magnitude < -0.5
+        const view = { dir: [ISO_VIEW.dir[0] * (flipX ? -1 : 1), ISO_VIEW.dir[1] * (flipY ? -1 : 1), ISO_VIEW.dir[2]] as Vec3, up: ISO_VIEW.up }
+        const orientation = `${flipX ? 'x' : ''}${flipY ? 'y' : ''}`
+        // Keep the student's own rotation unless the selected faces would be hidden.
+        const current = cameraKeyRef.current.startsWith(`${tutorial.id}:geometry:`) ? cameraKeyRef.current.split(':')[2] : null
+        if (current === null || (magnitude > 0 && current !== orientation)) camera(`${tutorial.id}:geometry:${orientation}`, view)
+        else { engine.resetClippingRange(); engine.render() }
         setInfo({
           ...EMPTY_INFO, times: source.times, patches: patches.map((patch) => patch.name), points: step.internal?.numPoints ?? null,
           size: bounds ? [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]] : null,
@@ -275,8 +317,8 @@ export function useViewer(
 
       // ── results ──
       const stepIndex = display.stepIndex < 0 ? numSteps - 1 : Math.min(display.stepIndex, numSteps - 1)
-      const step = await source.data.loadStep(stepIndex)
-      const fields = await source.data.fieldsAt(stepIndex)
+      const step = await source.fields.loadStep(stepIndex)
+      const fields = await source.fields.fieldsAt(stepIndex)
       if (stale()) return
       const internal = step.internal
       if (!internal || !step.surface) throw new Error('This time step has no volume data.')
@@ -359,13 +401,13 @@ export function useViewer(
       draw(stepRange)
       camera(`${tutorial.id}:results:${tutorial.dimension}`, tutorial.dimension === '2D' ? FRONT_VIEW : ISO_VIEW)
       const report = (range: [number, number], loading: boolean) => setInfo({
-        ...EMPTY_INFO, loading, times: source.times, stepIndex, fields, range, points: internal.numPoints, patches: Object.keys(step.patches),
+        ...EMPTY_INFO, loading, times: source.times, stepIndex, fields, range, points: internal.numPoints, patches: [],
         size: [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]],
       })
       let finalRange = stepRange
       if (display.rangeMode === 'all' && numSteps > 1) {
         report(stepRange, true)
-        finalRange = await source.data.allTimeRange(array.name, component)
+        finalRange = await source.fields.allTimeRange(array.name, component)
         if (stale()) return
         draw(finalRange)
         engine.render()
@@ -396,16 +438,23 @@ export function useViewer(
 
   // Keep the model centred in the area the left panel leaves free.
   useEffect(() => {
-    engineRef.current?.setImageShift(Math.min(0.8, Math.max(0, leftCover)), 0)
+    const engine = engineRef.current
+    if (!engine) return
+    const next = fitZoom()
+    if (appliedFitRef.current > 0 && next !== appliedFitRef.current) engine.zoom(next / appliedFitRef.current)
+    appliedFitRef.current = next
+    engine.setImageShift(Math.min(0.8, Math.max(0, leftCover)), 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leftCover, engineReady])
 
-  const fit = useCallback(() => { engineRef.current?.resetCamera(); engineRef.current?.zoom(fitZoom()) }, [])
+  const fit = useCallback(() => { engineRef.current?.resetCamera(); appliedFitRef.current = fitZoom(); engineRef.current?.zoom(appliedFitRef.current) }, [])
   const view = useCallback((preset: 'iso' | 'front' | 'top' | 'side') => {
     const views: Record<string, { dir: Vec3; up: Vec3 }> = {
       iso: ISO_VIEW, front: FRONT_VIEW, top: { dir: [0, 1, 0], up: [0, 0, -1] }, side: { dir: [1, 0, 0], up: [0, 1, 0] },
     }
     engineRef.current?.setView(views[preset]!.dir, views[preset]!.up)
-    engineRef.current?.zoom(fitZoom())
+    appliedFitRef.current = fitZoom()
+    engineRef.current?.zoom(appliedFitRef.current)
   }, [])
   const zoom = useCallback((factor: number) => engineRef.current?.zoom(factor), [])
   const screenshot = useCallback(async () => {

@@ -47,4 +47,21 @@ timePrecision   6;
 
 runTimeModifiable false;
 
+functions
+{
+    // Area-averaged pressure on the inlet patch, recorded every iteration.
+    inletPressure
+    {
+        type            surfaceFieldValue;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        writeFields     false;
+        select          patch;
+        patch           inlet;
+        operation       areaAverage;
+        fields          (p);
+    }
+}
+
 // ************************************************************************* //

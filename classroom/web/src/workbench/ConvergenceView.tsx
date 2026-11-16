@@ -17,8 +17,10 @@ function niceTicks(lo: number, hi: number, target = 6): number[] {
   return ticks
 }
 
-function Chart({ title, x, series, log, xLabel, yLabel, refLine }: {
+function Chart({ title, x, series, log, xLabel, yLabel, refLine, settled }: {
   title: string; x: number[]; series: Series[]; log: boolean; xLabel: string; yLabel: string; refLine?: { value: number; label: string }
+  /** Scale the y axis to the later 85% of the run so a start-up transient does not flatten the plot. */
+  settled?: boolean
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(800)
@@ -39,14 +41,17 @@ function Chart({ title, x, series, log, xLabel, yLabel, refLine }: {
 
   const scale = useMemo(() => {
     let lo = Infinity, hi = -Infinity
-    for (const entry of shown) for (const value of entry.values) {
-      if (value === null || !Number.isFinite(value) || (log && value <= 0)) continue
+    const from = settled ? Math.floor(x.length * 0.15) : 0
+    for (const entry of shown) for (let i = from; i < entry.values.length; i++) {
+      const value = entry.values[i]
+      if (value == null || !Number.isFinite(value) || (log && value <= 0)) continue
       if (value < lo) lo = value
       if (value > hi) hi = value
     }
     if (refLine && !log) { lo = Math.min(lo, refLine.value); hi = Math.max(hi, refLine.value) }
     if (lo === Infinity) { lo = log ? 1e-6 : 0; hi = 1 }
     if (log) { lo = Math.pow(10, Math.floor(Math.log10(lo))); hi = Math.pow(10, Math.ceil(Math.log10(hi))); if (lo === hi) lo = hi / 10 }
+    else if (settled) { const pad = (hi - lo || Math.abs(hi) || 1) * 0.12; lo -= pad; hi += pad }
     else { if (lo > 0) lo = 0; if (lo === hi) hi = lo + 1; hi += (hi - lo) * 0.06 }
     const x0 = x[0] ?? 0
     const x1 = x[x.length - 1] ?? 1
@@ -64,7 +69,7 @@ function Chart({ title, x, series, log, xLabel, yLabel, refLine }: {
     let pen = false
     values.forEach((value, i) => {
       if (value === null || !Number.isFinite(value) || (log && value <= 0)) { pen = false; return }
-      d += `${pen ? 'L' : 'M'}${scale.sx(x[i]!).toFixed(1)} ${scale.sy(Math.max(value, scale.lo)).toFixed(1)}`
+      d += `${pen ? 'L' : 'M'}${scale.sx(x[i]!).toFixed(1)} ${scale.sy(Math.min(scale.hi, Math.max(value, scale.lo))).toFixed(1)}`
       pen = true
     })
     return d
@@ -187,6 +192,12 @@ export function ConvergenceView({ run }: { run: RunView }) {
             {hasCourant && (
               <Chart title="Maximum Courant number" x={data.times} series={[{ name: 'Co max', color: '#1976d2', values: data.courantMax }]} log={false} xLabel={xLabel} yLabel="Co max" refLine={{ value: 1, label: 'Co = 1' }} />
             )}
+            {data.monitors.map((monitor) => (
+              <Chart
+                key={monitor.title} title={monitor.title} x={monitor.times} log={false} xLabel={xLabel} yLabel={monitor.yLabel} settled
+                series={monitor.series.map((entry, i) => ({ name: entry.label, color: COLORS[(i * 2) % COLORS.length]!, values: entry.values }))}
+              />
+            ))}
             <p className="px-1 text-[13.5px] leading-relaxed text-muted-foreground">
               {steady
                 ? 'Each curve is the initial residual of one equation per iteration. A steady solution is converged when every residual has dropped by several orders of magnitude and levelled off.'

@@ -211,9 +211,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const run = workspace.runs.find((candidate) => candidate.id === runId)
       set({ workspace, starting: false })
       if (run?.status === 'succeeded') {
-        useToasts.getState().push('success', `${run.label}: results were already available for these settings — no compute needed.`)
+        useToasts.getState().push('success', `${run.label}: results were already available for these settings: no compute needed.`)
         get().select({ kind: 'run', runId, view: 'fields' })
-      } else get().select({ kind: 'run', runId, view: 'log' })
+      } else {
+        if (run?.status === 'failed') useToasts.getState().push('error', `${run.label}: these exact settings were already solved and failed. ${run.reason ?? ''}`)
+        get().select({ kind: 'run', runId, view: 'log' })
+      }
     } catch (error) {
       set({ starting: false })
       report(error)

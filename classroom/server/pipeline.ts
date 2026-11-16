@@ -14,11 +14,12 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import type Docker from 'dockerode'
 import { runDockerCommand, meshCheckPassed, OPENFOAM_IMAGE } from '../../core/docker/CommandRunner.js'
 import { hasFatalSolverLog } from '../../core/run/logSafety.js'
 import { atomicWrite } from '../../core/project/files.js'
-import { extractFatalMessage, parseCellCount, parseConvergence, parseTimeLine } from './logParse.js'
+import { extractFatalMessage, parseCellCount, parseConvergence, parseDatTable, parseTimeLine, thinIndices, type MonitorData } from './logParse.js'
 import type { RenderedCase, Tutorial } from './tutorials.js'
 
 export type StageName = 'mesh' | 'initialise' | 'solve' | 'export'
@@ -100,6 +101,43 @@ export function thinTimes<T>(times: T[], max: number): T[] {
   return [...picked].sort((a, b) => a - b).map(index => times[index]!)
 }
 
+/** Collect the tutorial's monitor plots from postProcessing/<functionObject>/<time>/*.dat. */
+function readMonitors(caseDir: string, tutorial: Tutorial): MonitorData[] {
+  const tables = new Map<string, Record<string, number[]>>()
+  const table = (name: string): Record<string, number[]> => {
+    const cached = tables.get(name)
+    if (cached) return cached
+    let parsed: Record<string, number[]> = {}
+    try {
+      const root = path.join(caseDir, 'postProcessing', name)
+      for (const timeDir of fs.readdirSync(root).sort()) {
+        const file = fs.readdirSync(path.join(root, timeDir)).find(entry => entry.endsWith('.dat'))
+        if (!file) continue
+        const full = path.join(root, timeDir, file)
+        if (fs.statSync(full).size <= 32 * 1024 * 1024) parsed = parseDatTable(fs.readFileSync(full, 'utf8'))
+        break
+      }
+    } catch { /* the function object wrote nothing */ }
+    tables.set(name, parsed)
+    return parsed
+  }
+  const monitors: MonitorData[] = []
+  for (const def of tutorial.def.monitors ?? []) {
+    const first = table(def.series[0]!.file)
+    const times = first['Time'] ?? []
+    if (!times.length) continue
+    const keep = thinIndices(times.length, 1200)
+    monitors.push({
+      title: def.title, yLabel: def.yLabel ?? '', times: keep.map(i => times[i]!),
+      series: def.series.map(series => {
+        const column = table(series.file)[series.column]
+        return { label: series.label, values: keep.map(i => { const value = column?.[i]; return value !== undefined && Number.isFinite(value) ? value : null }) }
+      }),
+    })
+  }
+  return monitors
+}
+
 function containerUser(): string | undefined {
   const uid = process.getuid?.()
   const gid = process.getgid?.()
@@ -177,9 +215,18 @@ export async function runPipeline(options: {
     }
     fs.writeFileSync(path.join(resultDir, 'log.txt'), log)
     fs.writeFileSync(path.join(resultDir, 'convergence.json'), JSON.stringify(parseConvergence(solverLines.join('\n'))))
+    fs.writeFileSync(path.join(resultDir, 'monitors.json'), JSON.stringify(readMonitors(caseDir, tutorial)))
     const vtk = path.join(caseDir, 'VTK')
     if (result.status === 'succeeded' && fs.existsSync(vtk)) {
-      fs.cpSync(vtk, path.join(resultDir, 'VTK'), { recursive: true })
+      // ASCII VTK compresses about 5x; results are stored and served gzipped.
+      const copy = (from: string, to: string) => {
+        fs.mkdirSync(to, { recursive: true })
+        for (const entry of fs.readdirSync(from, { withFileTypes: true })) {
+          if (entry.isDirectory()) copy(path.join(from, entry.name), path.join(to, entry.name))
+          else if (entry.isFile()) fs.writeFileSync(path.join(to, `${entry.name}.gz`), zlib.gzipSync(fs.readFileSync(path.join(from, entry.name)), { level: 6 }))
+        }
+      }
+      copy(vtk, path.join(resultDir, 'VTK'))
       result.vtkBytes = dirSize(path.join(resultDir, 'VTK'))
     }
     // result.json is written last: its presence marks the directory complete.
@@ -225,11 +272,12 @@ export async function runPipeline(options: {
     base.converged = /solution converged in/i.test(solve.text)
 
     hooks?.onStage?.('export')
-    const times = writtenTimes(caseDir).filter(time => !tutorial.def.run.steady || time.value > 0)
+    const skipInitial = tutorial.def.run.steady || tutorial.def.run.skipInitial === true
+    const times = writtenTimes(caseDir).filter(time => !skipInitial || time.value > 0)
     const selected = thinTimes(times, MAX_EXPORT_STEPS)
     const timeArgs = selected.length < times.length ? ['-time', selected.map(time => time.name).join(',')] : []
     const exported = await stage('Result export', 'foamToVTK', [
-      '-ascii', '-useTimeName', ...(tutorial.def.run.steady ? ['-noZero'] : []),
+      '-ascii', '-useTimeName', ...(skipInitial ? ['-noZero'] : []),
       '-fields', `(${tutorial.def.run.fields.join(' ')})`, ...timeArgs,
     ])
     if (exported.exitCode !== 0 || !fs.existsSync(path.join(caseDir, 'VTK'))) {

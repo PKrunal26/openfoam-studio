@@ -32,7 +32,7 @@ writeControl    adjustableRunTime;
 
 writeInterval   {{writeEvery}};
 
-purgeWrite      0;
+purgeWrite      60;
 
 writeFormat     ascii;
 

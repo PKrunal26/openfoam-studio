@@ -47,4 +47,35 @@ timePrecision   6;
 
 runTimeModifiable false;
 
+functions
+{
+    // Area-averaged pressure on the inletMain patch, recorded every iteration.
+    mainInletPressure
+    {
+        type            surfaceFieldValue;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        writeFields     false;
+        select          patch;
+        patch           inletMain;
+        operation       areaAverage;
+        fields          (p);
+    }
+
+    // Area-averaged pressure on the inletBranch patch, recorded every iteration.
+    branchInletPressure
+    {
+        type            surfaceFieldValue;
+        libs            ("libfieldFunctionObjects.so");
+        writeControl    timeStep;
+        writeInterval   1;
+        writeFields     false;
+        select          patch;
+        patch           inletBranch;
+        operation       areaAverage;
+        fields          (p);
+    }
+}
+
 // ************************************************************************* //
