@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, ChevronRight, RotateCcw } from 'lucide-react'
 import { isActive, type RunView } from '@c/api'
 import { navigate } from '@c/router'
 import { useWorkbench, type RunViewKind } from '@c/store'
-import { Button, Mark, Spinner, Tag, cn, formatDuration, formatNumber, pad2 } from '@c/ui/primitives'
+import { Button, Mark, Spinner, Tag, cn, formatDuration, formatNumber } from '@c/ui/primitives'
 import { ComputeStatus, UserMenu } from './Dashboard'
 import { CaseFilesView } from '@c/workbench/CaseFilesView'
 import { ConvergenceView } from '@c/workbench/ConvergenceView'
@@ -117,23 +117,21 @@ export function Workbench({ tutorialId }: { tutorialId: string }) {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-[52px] shrink-0 items-center gap-3 border-b pl-4 pr-3">
-        <button type="button" className="flex h-9 items-center gap-2 pr-1 hover:opacity-70" onClick={() => navigate('/')} title="All tutorials" aria-label="All tutorials"><Mark size={26} /></button>
-        <nav className="flex min-w-0 items-center gap-1.5 text-[13.5px]" aria-label="Breadcrumb">
-          <button type="button" className="text-ink-3 hover:text-ink" onClick={() => navigate('/')}>Tutorials</button>
-          <ChevronRight size={14} className="shrink-0 text-ink-4" />
-          <span className="t-mono text-ink-3">{pad2(tutorial.order)}</span>
-          <h1 className="t-title truncate text-[16px]">{tutorial.title}</h1>
+      <header className="flex h-[52px] shrink-0 items-center gap-3 border-b pl-4 pr-2 text-[13px]">
+        <button type="button" className="-ml-[5px] flex h-9 w-9 shrink-0 items-center justify-center transition-colors hover:bg-wash" onClick={() => navigate('/')} title="All tutorials" aria-label="All tutorials"><Mark size={26} /></button>
+        <nav className="flex min-w-0 items-center gap-2" aria-label="Breadcrumb">
+          <button type="button" className="shrink-0 text-ink-3 transition-colors hover:text-ink" onClick={() => navigate('/')}>Tutorials</button>
+          <ChevronRight size={13} className="shrink-0 text-ink-3" />
+          <h1 className="t-title truncate text-[15px]" aria-current="page">{tutorial.title}</h1>
         </nav>
-        <span className="t-mono hidden whitespace-nowrap text-[11.5px] text-ink-3 lg:block">{tutorial.dimension} · {tutorial.solver}</span>
         <div className="flex-1" />
         {modifications > 0 && (
           <Button variant="ghost" size="sm" className="hidden md:inline-flex" onClick={() => { if (window.confirm('Reset every setting and edited file to the reference setup? Your runs are kept.')) void resetAll() }} title="Go back to the reference setup">
             <RotateCcw size={13} /> Reset {modifications} {modifications === 1 ? 'change' : 'changes'}
           </Button>
         )}
-        <span className="hidden md:block"><ComputeStatus /></span>
-        <Button variant={guideOpen ? 'ink' : 'outline'} size="sm" aria-pressed={guideOpen} onClick={() => setGuideOpen(!guideOpen)}><BookOpen size={14} /> Guide</Button>
+        <span className="hidden md:block"><ComputeStatus quiet /></span>
+        <Button variant="ghost" size="sm" className={cn('font-normal', guideOpen ? 'bg-wash text-ink' : 'text-ink-3')} aria-pressed={guideOpen} onClick={() => setGuideOpen(!guideOpen)}><BookOpen size={14} /> Guide</Button>
         <UserMenu />
       </header>
 

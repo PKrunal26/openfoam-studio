@@ -13,10 +13,10 @@ export function UserMenu() {
   const initials = info.student.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()
   return (
     <div className="relative">
-      <button type="button" className="flex h-9 items-center gap-2 pl-2 pr-1 text-[13.5px] hover:bg-wash" onClick={() => setOpen((value) => !value)} aria-haspopup="menu" aria-expanded={open}>
-        <span className="hidden max-w-[150px] truncate md:block">{info.student.name}</span>
-        <span className="flex h-7 w-7 items-center justify-center bg-ink font-mono text-[11px] font-medium text-white">{initials}</span>
-        <ChevronDown size={14} className="text-ink-3" />
+      <button type="button" className="flex h-9 items-center gap-1.5 px-2 text-[13px] text-ink-3 transition-colors hover:bg-wash hover:text-ink" onClick={() => setOpen((value) => !value)} aria-haspopup="menu" aria-expanded={open}>
+        <span className="sm:hidden">{initials}</span>
+        <span className="hidden max-w-[150px] truncate sm:block">{info.student.name}</span>
+        <ChevronDown size={14} className="shrink-0 text-ink-3" />
       </button>
       {open && (
         <>
@@ -39,7 +39,8 @@ export function UserMenu() {
 }
 
 /** Shared solver capacity, as a row of slot blocks. */
-export function ComputeStatus() {
+/** Compute state. `quiet` keeps the workbench bar silent until there is something to say. */
+export function ComputeStatus({ quiet }: { quiet?: boolean } = {}) {
   const [status, setStatus] = useState<{ online: boolean; running: number; queued: number; slots: number } | null>(null)
   useEffect(() => {
     let alive = true
@@ -49,9 +50,13 @@ export function ComputeStatus() {
     return () => { alive = false; clearInterval(timer) }
   }, [])
   if (!status) return null
-  const text = !status.online ? 'Compute offline' : status.running + status.queued === 0 ? 'Compute idle' : `${status.running} running${status.queued ? `, ${status.queued} queued` : ''}`
+  const busy = status.running + status.queued > 0
+  if (quiet && status.online && !busy) return null
+  const text = !status.online ? 'Compute offline' : busy ? `${status.running} running${status.queued ? `, ${status.queued} queued` : ''}` : 'Compute idle'
+  const title = status.online ? `${status.slots} solver slots shared by the class` : 'New runs are disabled until the compute backend is back'
+  if (quiet) return <span className={cn('text-[13px] whitespace-nowrap', status.online ? 'text-ink-3' : 'text-bad')} title={title}>{text}</span>
   return (
-    <span className="flex items-center gap-2 font-mono text-[11.5px] text-ink-3" title={status.online ? `${status.slots} solver slots shared by the class` : 'New runs are disabled until the compute backend is back'}>
+    <span className="flex items-center gap-2 font-mono text-[11.5px] text-ink-3" title={title}>
       <span className="flex gap-[2px]">
         {status.online
           ? Array.from({ length: Math.max(1, status.slots) }, (_, i) => <span key={i} className={cn('h-2.5 w-2.5', i < status.running ? 'bg-v2' : 'bg-wash-2')} />)
