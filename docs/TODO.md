@@ -14,7 +14,7 @@
 - `done` · All six reference cases solve in OpenFOAM 13; every form option and guide exercise verified with `npm run classroom:verify`; 35 unit tests; headless-browser pass of the full student flow.
 - `done` · Stage 0 re-run after the optional container-user change in `core/docker/CommandRunner.ts`: 15/15 passed. Full unit suite 316/316, all typechecks and the desktop renderer build pass. Stages 1 to 5 not re-run (need an LLM provider; desktop pipeline otherwise unchanged).
 - `done` · Visual redesign with its own identity (viridis block system, new type, flat layout, custom controls, run tabs); see AGENT_CHANGES 2026-11-16.
-- `pending` · Try the Mac mini hosting steps in docs/CLASSROOM.md (not run on macOS yet).
+- `pending` · On the Mac mini: move `openfoamstudio.online` nameservers to Cloudflare, then run `bash classroom/host-mac.sh` (script not yet run on macOS or with a tunnel).
 - `pending` · Deploy to the course server (AWS EC2 or similar) with a real class code, instructor code and domain; follow docs/CLASSROOM.md.
 - `pending` · Confirm the tutorial list with the instructor; add or adapt cases under `classroom/tutorials/` as needed.
 - `pending` · Optional: AI helper panel behind an instructor-provided key; snappyHexMesh/CAD geometries; binary VTK for larger meshes.

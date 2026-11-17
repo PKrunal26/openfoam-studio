@@ -195,6 +195,40 @@ runs it without emulation.
    caffeinate -s
    ```
 
+#### One command, on your own domain
+
+`classroom/host-mac.sh` does steps 3, 5 and 6 in one go: it builds, creates
+`classroom/.env` with random class and instructor codes on first run, starts
+the server, keeps the Mac awake and publishes it through a named Cloudflare
+Tunnel with HTTPS. Nothing changes on your router and your home address stays
+private.
+
+One-time preparation for a domain bought elsewhere (Porkbun, for example):
+
+1. Create a free Cloudflare account, choose "Add a domain", enter the domain
+   and pick the free plan. Cloudflare shows two nameservers.
+2. At the registrar, replace the domain's nameservers with those two
+   (Porkbun: Domain Management, Details, Authoritative Nameservers). Wait for
+   Cloudflare to mark the domain active, usually within an hour.
+3. On the Mac:
+
+   ```bash
+   brew install cloudflared
+   ```
+
+Then, from the repository:
+
+```bash
+bash classroom/host-mac.sh
+```
+
+The first run opens a browser to authorise `cloudflared` for the domain. The
+default domain is `openfoamstudio.online`; set `OFS_PUBLIC_DOMAIN` for another
+one, or `OFS_NO_TUNNEL=1` to serve the local network only. The script prints
+the class and instructor codes each time it starts; edit `classroom/.env` to
+change them. Local mode was run on Linux; the tunnel steps and macOS were not
+run in development.
+
 If Docker Desktop's default socket is turned off, set `DOCKER_HOST` to its
 socket path before starting the server. This setup has been verified on Linux
 only; the first start on macOS is the check that Docker file sharing and the

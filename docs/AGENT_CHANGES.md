@@ -736,3 +736,9 @@ Use one entry per work session.
 - Guides: wording updated to the new navigation names (Runs list, Fields/Convergence/Log tabs).
 - Docs: `docs/CLASSROOM.md` gains a "Look and feel" note and an "On your own Mac" section (Docker Desktop, separate dev instance on its own port and data folder, tunnel for outside access, sleep prevention). Confirmed with `docker manifest inspect` that `microfluidica/openfoam:13` ships an arm64 build; the macOS setup itself was not run.
 - Verification: classroom web and server typechecks pass; a headless-browser pass at 1600 and 1366 px covered every screen plus the full student flow (sign-up, edit, real Docker run, keyboard use of the custom select, failing run, unsafe edit rejection, instructor page) with no console errors.
+
+## 2026-11-17: Classroom one-command Mac hosting on a custom domain
+
+- New `classroom/host-mac.sh`: checks Node, Docker and `cloudflared`, creates `classroom/.env` (gitignored) with random class and instructor codes on first run, builds, starts the server, keeps the Mac awake with `caffeinate`, and publishes it on a domain (default `openfoamstudio.online`) through a named Cloudflare Tunnel with secure cookies and proxy trust on. `OFS_NO_TUNNEL=1` serves the local network only.
+- `docs/CLASSROOM.md`: "One command, on your own domain" section, including moving a Porkbun domain's nameservers to Cloudflare.
+- Verification: `bash -n` plus a real run in local mode in the Linux sandbox (env file created, build, server answering `/api/session`). The tunnel steps and macOS itself were not run: the user's Mac was not reachable from the cloud session.
