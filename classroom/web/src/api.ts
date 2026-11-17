@@ -152,10 +152,14 @@ export interface Convergence {
 }
 
 export interface VtkSeriesStep { time: number; internal?: string; patches: Record<string, string> }
+/** field name → component selector as a string → [min, max] over the whole run. */
+export type FieldRangeTable = Record<string, Record<string, [number, number]>>
 export interface VtkManifest {
   hash: string
   files: { relPath: string; size: number }[]
   series: { times: number[]; steps: VtkSeriesStep[] }
+  /** Present once the server has computed it; saves downloading every step. */
+  ranges?: FieldRangeTable
 }
 
 export interface LogChunk { lines: string[]; start?: number; next: number; done: boolean; total: number | null }
@@ -265,6 +269,7 @@ export const api = {
   convergence: (id: string, runId: string) => request<Convergence>('GET', `${r(id, runId)}/convergence`),
   runFiles: (id: string, runId: string) => request<{ files: CaseFile[] }>('GET', `${r(id, runId)}/files`),
   manifest: (id: string, runId: string) => request<VtkManifest>('GET', `${r(id, runId)}/vtk/manifest`),
+  vtkRanges: (id: string, runId: string) => request<{ ranges: FieldRangeTable }>('GET', `${r(id, runId)}/vtk/ranges`),
   vtkUrl: (id: string, runId: string, relPath: string, hash: string) =>
     `/api${r(id, runId)}/vtk/file?path=${encodeURIComponent(relPath)}&h=${hash.slice(0, 10)}`,
   logDownloadUrl: (id: string, runId: string) => `/api${r(id, runId)}/log.txt`,

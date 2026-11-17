@@ -571,7 +571,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     if (action === 'GET /vtk/manifest') {
       if (results.read(hash)?.status !== 'succeeded') throw new HttpError(404, 'This run has no results')
       results.touch(hash)
-      sendJSON(req, res, 200, { hash, ...results.manifest(hash) })
+      // The whole-run ranges ride along once computed; until then the viewer
+      // asks for them separately, so opening results never waits on the scan.
+      const ranges = results.cachedFieldRanges(hash)
+      if (!ranges) results.warmFieldRanges(hash)
+      sendJSON(req, res, 200, { hash, ...results.manifest(hash), ...(ranges ? { ranges } : {}) })
+      return
+    }
+    if (action === 'GET /vtk/ranges') {
+      if (results.read(hash)?.status !== 'succeeded') throw new HttpError(404, 'This run has no results')
+      sendJSON(req, res, 200, { ranges: await results.fieldRanges(hash) })
       return
     }
     if (action === 'GET /vtk/file') {

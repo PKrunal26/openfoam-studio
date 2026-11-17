@@ -74,7 +74,12 @@ function getSource(tutorialId: string, runId: string, hash: string): Promise<Sou
   const promise = api.manifest(tutorialId, runId).then((manifest) => {
     const fetchFile = (relPath: string) => fetchVtkText(tutorialId, runId, relPath, manifest.hash)
     const volumeOnly = { times: manifest.series.times, steps: manifest.series.steps.map((step) => ({ ...step, patches: {} })) }
-    return { fields: new ResultsDataSource(volumeOnly, fetchFile), geometry: new ResultsDataSource(manifest.series, fetchFile), times: manifest.series.times }
+    const fields = new ResultsDataSource(volumeOnly, fetchFile)
+    // The whole-run colour scale comes from the server, computed once per
+    // result. Without it every browser downloads every time step to work it out.
+    if (manifest.ranges) fields.useRangeTable(manifest.ranges)
+    else fields.useRangeTableLoader(() => api.vtkRanges(tutorialId, runId).then((data) => data.ranges).catch(() => null))
+    return { fields, geometry: new ResultsDataSource(manifest.series, fetchFile), times: manifest.series.times }
   })
   sources.set(key, promise)
   promise.catch(() => sources.delete(key))
@@ -400,15 +405,37 @@ export function useViewer(
         ...EMPTY_INFO, loading, times: source.times, stepIndex, fields, range, points: internal.numPoints, patches: [],
         size: [bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]],
       })
-      let finalRange = stepRange
       if (display.rangeMode === 'all' && numSteps > 1) {
-        report(stepRange, true)
-        finalRange = await source.fields.allTimeRange(array.name, component)
-        if (stale()) return
-        draw(finalRange)
-        engine.render()
+        const settled = source.fields.settledAllTimeRange(array.name, component)
+        if (settled) {
+          draw(settled)
+          engine.render()
+          report(settled, false)
+        } else {
+          // The whole-run scan is one request per time step. Colour by the
+          // widest range already in memory and let the scan finish in the
+          // background: waiting for it here would stall the animation for a
+          // round trip per step.
+          const known = source.fields.loadedRange(array.name, component) ?? stepRange
+          draw(known)
+          engine.render()
+          report(known, true)
+          void source.fields.allTimeRange(array.name, component).then((range) => {
+            if (stale()) return
+            draw(range)
+            engine.render()
+            report(range, false)
+          })
+        }
+      } else {
+        report(stepRange, false)
       }
-      report(finalRange, false)
+      // Warm what comes next so the first pass through a run plays as smoothly
+      // as a replay: while playing, the steps just ahead; otherwise the
+      // neighbours the student reaches with the step buttons or the slider.
+      const ahead = display.playing ? [1, 2, 3, 4] : [1, -1, 2]
+      source.fields.prefetch(ahead.map((offset) => (stepIndex + offset + numSteps) % numSteps))
+
       if (display.playing && numSteps > 1) {
         timer = setTimeout(() => { if (!stale()) advanceRef.current((stepIndex + 1) % numSteps) }, 160)
       }

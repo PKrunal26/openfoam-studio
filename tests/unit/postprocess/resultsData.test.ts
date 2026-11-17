@@ -66,6 +66,112 @@ describe('ResultsDataSource', () => {
     expect(hi).toBeGreaterThan(0.5)
     expect(hi).toBeLessThanOrEqual(1.05)
   })
+
+  // A whole-run scan is one request per time step. Walking them one at a time
+  // costs a full round trip per step: invisible on localhost, minutes long for
+  // a student on a remote server, and it blocks the first animation frame.
+  it('scans time steps concurrently, not one round trip at a time', async () => {
+    const steps = Array.from({ length: 40 }, (_, i) => ({ time: i, internal: 'cavity_10.vtk', patches: {} }))
+    const series: VtkSeries = { times: steps.map((step) => step.time), steps }
+    let inFlight = 0
+    let peakInFlight = 0
+    const source = new ResultsDataSource(series, async (relPath) => {
+      inFlight++
+      peakInFlight = Math.max(peakInFlight, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight--
+      return fs.readFileSync(fixturePath(relPath), 'utf8')
+    })
+
+    await source.allTimeRange('U', VECTOR_MAGNITUDE)
+
+    expect(peakInFlight).toBeGreaterThan(1)
+  })
+
+  it('uses a server-computed range table instead of downloading every step', async () => {
+    const steps = Array.from({ length: 30 }, (_, i) => ({ time: i, internal: 'cavity_10.vtk', patches: {} }))
+    const series: VtkSeries = { times: steps.map((step) => step.time), steps }
+    let fetches = 0
+    const source = new ResultsDataSource(series, async (relPath) => {
+      fetches++
+      return fs.readFileSync(fixturePath(relPath), 'utf8')
+    })
+    source.useRangeTable({ U: { '-1': [0, 2] } })
+
+    const range = await source.allTimeRange('U', VECTOR_MAGNITUDE)
+
+    expect(range).toEqual([0, 2])
+    expect(fetches).toBe(0)
+    expect(source.settledAllTimeRange('U', VECTOR_MAGNITUDE)).toEqual([0, 2])
+  })
+
+  it('waits for the server table instead of racing it with a scan', async () => {
+    const steps = Array.from({ length: 30 }, (_, i) => ({ time: i, internal: 'cavity_10.vtk', patches: {} }))
+    const series: VtkSeries = { times: steps.map((step) => step.time), steps }
+    let fetches = 0
+    const source = new ResultsDataSource(series, async (relPath) => {
+      fetches++
+      return fs.readFileSync(fixturePath(relPath), 'utf8')
+    })
+    source.useRangeTableLoader(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return { U: { '-1': [0, 3] } }
+    })
+
+    const range = await source.allTimeRange('U', VECTOR_MAGNITUDE)
+
+    expect(range).toEqual([0, 3])
+    expect(fetches).toBe(0)
+  })
+
+  it('scans when the server has no table for the run', async () => {
+    const { source } = makeSource()
+    source.useRangeTableLoader(async () => null)
+    const [lo, hi] = await source.allTimeRange('U', VECTOR_MAGNITUDE)
+    expect(hi).toBeGreaterThan(lo)
+  })
+
+  it('falls back to scanning for a field the table does not cover', async () => {
+    const { source } = makeSource()
+    source.useRangeTable({ other: { '0': [0, 1] } })
+    const [lo, hi] = await source.allTimeRange('U', VECTOR_MAGNITUDE)
+    expect(hi).toBeGreaterThan(lo)
+  })
+
+  it('prefetches steps ahead without being awaited, and only once each', async () => {
+    const steps = Array.from({ length: 10 }, (_, i) => ({ time: i, internal: 'cavity_10.vtk', patches: {} }))
+    const series: VtkSeries = { times: steps.map((step) => step.time), steps }
+    const requested: number[] = []
+    const source = new ResultsDataSource(series, async (relPath) => {
+      requested.push(requested.length)
+      return fs.readFileSync(fixturePath(relPath), 'utf8')
+    })
+
+    source.prefetch([2, 3, 4])
+    source.prefetch([2, 3, 4])
+    await source.loadStep(2)
+    await source.loadStep(3)
+    await source.loadStep(4)
+
+    expect(requested.length).toBe(3)
+  })
+
+  it('keeps the cache inside its memory budget', async () => {
+    const steps = Array.from({ length: 12 }, (_, i) => ({ time: i, internal: 'cavity_10.vtk', patches: {} }))
+    const series: VtkSeries = { times: steps.map((step) => step.time), steps }
+    let fetches = 0
+    const source = new ResultsDataSource(series, async (relPath) => {
+      fetches++
+      return fs.readFileSync(fixturePath(relPath), 'utf8')
+    }, { cacheBudgetBytes: 1 })
+
+    for (let i = 0; i < 12; i++) await source.loadStep(i)
+    const afterFirstPass = fetches
+    await source.loadStep(0)
+
+    // A budget of one byte keeps only the newest step, so step 0 is gone.
+    expect(fetches).toBe(afterFirstPass + 1)
+  })
 })
 
 describe('stepRange', () => {

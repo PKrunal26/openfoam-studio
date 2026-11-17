@@ -3,6 +3,9 @@
 
 import type { VtkDataArray } from './legacyVtkParser'
 
+/** Bookkeeping arrays foamToVTK writes that are not physical fields. */
+export const HIDDEN_FIELDS = new Set(['cellID', 'patchID'])
+
 /** Component selector meaning |v| for vector fields. */
 export const VECTOR_MAGNITUDE = -1
 
