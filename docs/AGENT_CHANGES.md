@@ -742,3 +742,10 @@ Use one entry per work session.
 - New `classroom/host-mac.sh`: checks Node, Docker and `cloudflared`, creates `classroom/.env` (gitignored) with random class and instructor codes on first run, builds, starts the server, keeps the Mac awake with `caffeinate`, and publishes it on a domain (default `openfoamstudio.online`) through a named Cloudflare Tunnel with secure cookies and proxy trust on. `OFS_NO_TUNNEL=1` serves the local network only.
 - `docs/CLASSROOM.md`: "One command, on your own domain" section, including moving a Porkbun domain's nameservers to Cloudflare.
 - Verification: `bash -n` plus a real run in local mode in the Linux sandbox (env file created, build, server answering `/api/session`). The tunnel steps and macOS itself were not run: the user's Mac was not reachable from the cloud session.
+
+## 2026-11-17: Classroom read-only preview on GitHub Pages
+
+- New `scripts/export-classroom-preview.mjs` (replaces an ad hoc script used for the earlier preview): signs in to a running classroom server, waits for the reference cases, and writes the JSON, result VTK text, logs and thumbnails that the `VITE_STATIC_DEMO=1` web build reads from `data/`.
+- New `.github/workflows/classroom-preview.yml`: solves the reference cases in CI, exports them, builds the static web app and deploys to GitHub Pages. Runs on pushes to `main` and the classroom development branch that touch the classroom.
+- `docs/CLASSROOM.md`: "Read-only preview site" section with the Pages settings and DNS records for a custom domain.
+- Verification: export and static build run locally against a real server (all six tutorials, 46 MB); the result opened in headless Chromium with the viewer rendering and no console errors. The workflow itself and the Pages deployment have not run successfully yet: Pages must first be enabled in the repository settings and DNS set at the registrar, which the agent cannot do.

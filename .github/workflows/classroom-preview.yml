@@ -1,0 +1,60 @@
+# Publishes the read-only classroom preview (pre-solved tutorials, no server)
+# to GitHub Pages. The reference cases are solved here in Docker, exported to
+# static files and served next to a VITE_STATIC_DEMO build of the web app.
+name: Classroom preview site
+on:
+  push:
+    branches: [main, claude/lucid-dirac-c6a6ct]
+    paths:
+      - 'classroom/**'
+      - 'renderer/lib/vtk/**'
+      - 'scripts/export-classroom-preview.mjs'
+      - 'vite.classroom.config.ts'
+      - '.github/workflows/classroom-preview.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: classroom-preview
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build server and static web app
+        run: |
+          npm run classroom:build
+          VITE_STATIC_DEMO=1 npx vite build -c vite.classroom.config.ts --outDir "$RUNNER_TEMP/site" --emptyOutDir
+      - name: Solve reference cases and export them
+        env:
+          OFS_CLASS_CODE: preview-export
+          OFS_CLASSROOM_DATA: ${{ runner.temp }}/classroom-data
+        run: |
+          docker pull -q microfluidica/openfoam:13
+          node classroom/dist/server.js > "$RUNNER_TEMP/server.log" 2>&1 &
+          SERVER_PID=$!
+          sleep 5
+          node scripts/export-classroom-preview.mjs "$RUNNER_TEMP/site" || { tail -50 "$RUNNER_TEMP/server.log"; kill $SERVER_PID; exit 1; }
+          kill $SERVER_PID
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

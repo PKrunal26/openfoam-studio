@@ -234,6 +234,37 @@ socket path before starting the server. This setup has been verified on Linux
 only; the first start on macOS is the check that Docker file sharing and the
 socket are set up as described.
 
+### Read-only preview site (GitHub Pages)
+
+`.github/workflows/classroom-preview.yml` publishes a version of the site that
+needs no server: it solves the reference cases in CI, exports them with
+`scripts/export-classroom-preview.mjs` and serves them beside a
+`VITE_STATIC_DEMO=1` build. Visitors can open every tutorial, guide, result,
+plot, log and case file; changing settings and running are disabled.
+
+One-time setup in the repository settings:
+
+1. Pages: set Source to "GitHub Actions".
+2. Environments, `github-pages`: allow the branch the workflow runs from if it
+   is not the default branch.
+3. Pages, Custom domain: enter the domain, then tick "Enforce HTTPS" once the
+   certificate is issued.
+
+DNS at the registrar for an apex domain: four `A` records for the bare domain
+pointing to `185.199.108.153`, `185.199.109.153`, `185.199.110.153` and
+`185.199.111.153`, plus a `CNAME` for `www` pointing to `<owner>.github.io`.
+Remove any parking records the registrar created.
+
+To build the same site by hand, with a classroom server running:
+
+```bash
+VITE_STATIC_DEMO=1 npx vite build -c vite.classroom.config.ts --outDir /tmp/site --emptyOutDir
+```
+
+```bash
+OFS_CLASS_CODE=... node scripts/export-classroom-preview.mjs /tmp/site http://127.0.0.1:8080
+```
+
 ### Without Docker Compose
 
 The server is a single Node process and can run directly on the host:
